@@ -31,11 +31,28 @@
     return best;
   }
 
-  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: true });
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-  const line = L.polyline(points.map(p => [p.lat, p.lon]), { color: "#ff1616", weight: 6, opacity: .96, lineCap: "round", lineJoin: "round" }).addTo(map);
-  const outline = L.polyline(points.map(p => [p.lat, p.lon]), { color: "#ffffff", weight: 10, opacity: .7, lineCap: "round", lineJoin: "round" }).addTo(map);
-  outline.bringToBack();
+  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const streetTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    subdomains: "abcd",
+    maxZoom: 20,
+    detectRetina: true,
+    updateWhenIdle: true,
+    updateWhenZooming: false,
+    keepBuffer: 4,
+    attribution: "© OpenStreetMap © CARTO",
+  }).addTo(map);
+  streetTiles.on("tileerror", event => {
+    const tile = event.tile;
+    const match = tile?.src?.match(/\/(\d+)\/(\d+)\/(\d+)(?:@2x)?\.png/);
+    if (match && !tile.dataset.fallback) {
+      tile.dataset.fallback = "1";
+      tile.src = `https://tile.openstreetmap.org/${match[1]}/${match[2]}/${match[3]}.png`;
+    }
+  });
+  const routeLatLngs = points.map(p => [p.lat, p.lon]);
+  const courseRenderer = L.Browser.svg ? L.svg({ padding: .5 }) : L.canvas({ padding: .5 });
+  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 12, opacity: .9, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
+  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ff1616", weight: 7, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
   map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
 
   const label = (text, className) => L.divIcon({ className, html: text, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
@@ -70,7 +87,11 @@
     } else {
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy); nearestMarker.setLatLng([nearest.lat, nearest.lon]);
     }
-    if (following) map.setView(ll, Math.max(map.getZoom(), 16), { animate: true });
+    if (following) {
+      const targetZoom = Math.max(map.getZoom(), 16);
+      const center = map.getCenter();
+      if (map.getZoom() !== targetZoom || center.distanceTo(ll) > 12) map.setView(ll, targetZoom, { animate: false });
+    }
     els.recenter.disabled = false;
   }
 
@@ -96,11 +117,18 @@
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
   els.track.addEventListener("click", () => watchId === null ? startTracking() : stopTracking());
-  els.recenter.addEventListener("click", () => { following = true; if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: true }); });
+  els.recenter.addEventListener("click", () => { following = true; if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: false }); });
   els.overview.addEventListener("click", () => { following = false; map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] }); });
   map.on("dragstart", () => { following = false; });
   els["help-toggle"].addEventListener("click", () => { const open = els["help-body"].hidden; els["help-body"].hidden = !open; els["help-toggle"].setAttribute("aria-expanded", String(open)); els["help-toggle"].querySelector("span").textContent = open ? "−" : "＋"; });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && watchId !== null) requestWakeLock(); });
+  const refreshMapLayout = () => window.requestAnimationFrame(() => map.invalidateSize({ pan: false, animate: false }));
+  window.addEventListener("resize", refreshMapLayout, { passive: true });
+  window.addEventListener("orientationchange", () => setTimeout(refreshMapLayout, 250), { passive: true });
+  window.visualViewport?.addEventListener("resize", refreshMapLayout, { passive: true });
+  window.visualViewport?.addEventListener("scroll", refreshMapLayout, { passive: true });
+  setTimeout(refreshMapLayout, 100);
+  setTimeout(refreshMapLayout, 1000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   window.__routeAppTest = { nearestOnCourse, updatePosition, totalMeters, startTracking, stopTracking };
 })();
