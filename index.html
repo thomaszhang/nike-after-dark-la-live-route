@@ -13,7 +13,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=6">
+  <link rel="stylesheet" href="styles.css?v=7">
 </head>
 <body>
   <main id="app">
@@ -26,14 +26,13 @@
       </div>
       <button id="recenter" class="icon-button" type="button" title="Center on my location" aria-label="Center on my location" disabled>◎</button>
     </section>
-    <header class="top-card">
-      <div>
-        <p class="eyebrow">NIKE AFTER DARK TOUR · LOS ANGELES</p>
-        <h1>Live course</h1>
-      </div>
-    </header>
-
     <section id="stats" class="stats-card" aria-live="polite">
+      <div class="info-header">
+        <h1>Nike LA · Live course</h1>
+        <button id="help-toggle" class="info-button" type="button" aria-expanded="false">
+          <span id="help-label">More info</span><span id="help-symbol" aria-hidden="true">＋</span>
+        </button>
+      </div>
       <div class="stat"><span class="stat-label">COURSE</span><strong id="course-status">Ready</strong></div>
       <div class="stat"><span class="stat-label">MILE</span><strong id="mile-progress">—</strong></div>
       <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
@@ -53,12 +52,12 @@
     <section class="actions-card">
       <button id="track" class="primary-button" type="button">Start live tracking</button>
       <button id="navigate" class="secondary-button" type="button">2.5D</button>
-      <button id="overview" class="secondary-button" type="button">Route</button>
+      <button id="overview" class="secondary-button" type="button" aria-label="Show full route">Full route</button>
     </section>
 
-    <section id="help" class="help-card">
-      <button id="help-toggle" type="button" aria-expanded="false">Before your run <span>＋</span></button>
-      <div id="help-body" hidden>
+    <section id="help" class="help-card" hidden>
+      <div id="help-body">
+        <strong class="help-heading">Before your run</strong>
         <ol>
           <li>Tap <b>Start live tracking</b> and allow precise location.</li>
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
@@ -75,6 +74,6 @@
   </main>
   <script src="leaflet.js?v=1.9.4"></script>
   <script src="route-data.js?v=2"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

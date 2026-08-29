@@ -133,13 +133,13 @@
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
 
-  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "guidance", "guidance-arrow", "guidance-title", "guidance-detail", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
+  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "guidance", "guidance-arrow", "guidance-title", "guidance-detail", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
   const navigationCanvas = document.createElement("canvas");
   navigationCanvas.id = "navigation-view";
   navigationCanvas.hidden = true;
   document.getElementById("app").append(navigationCanvas);
   let watchId = null, userMarker = null, accuracyCircle = null, nearestMarker = null, following = true, wakeLock = null;
-  let navigationMode = false, orientationListening = false, deviceHeading = null, headingSource = "", lastCompassAt = 0, currentFix = null, currentNearest = null;
+  let navigationMode = false, fullRouteMode = false, orientationListening = false, deviceHeading = null, headingSource = "", lastCompassAt = 0, currentFix = null, currentNearest = null;
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
 
@@ -384,6 +384,12 @@
     watchId = null; els.track.textContent = "Start live tracking"; els.track.classList.remove("tracking");
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
+  function setFullRouteMode(enabled) {
+    fullRouteMode = enabled;
+    els.overview.textContent = enabled ? "Live 2.5D" : "Full route";
+    els.overview.classList.toggle("active", enabled);
+    els.overview.setAttribute("aria-label", enabled ? "Return to live 2.5D view" : "Show full route");
+  }
   function applyNavigationMode(enabled) {
     navigationMode = enabled;
     navigationCanvas.hidden = !enabled;
@@ -393,6 +399,7 @@
     els.navigate.setAttribute("aria-label", enabled ? "2.5D navigation on" : "Enable 2.5D navigation");
     document.body.classList.toggle("navigation-mode", enabled);
     if (enabled) {
+      setFullRouteMode(false);
       following = true;
       renderNavigation();
     } else {
@@ -427,10 +434,25 @@
   }
   els.track.addEventListener("click", () => watchId === null ? startTracking() : stopTracking());
   els.navigate.addEventListener("click", toggleNavigation);
-  els.recenter.addEventListener("click", () => { following = true; if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: false }); });
-  els.overview.addEventListener("click", () => { applyNavigationMode(false); following = false; map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] }); });
+  els.recenter.addEventListener("click", () => { setFullRouteMode(false); following = true; if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: false }); });
+  els.overview.addEventListener("click", async () => {
+    if (fullRouteMode) {
+      await toggleNavigation();
+      return;
+    }
+    applyNavigationMode(false);
+    setFullRouteMode(true);
+    following = false;
+    map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
+  });
   map.on("dragstart", () => { following = false; });
-  els["help-toggle"].addEventListener("click", () => { const open = els["help-body"].hidden; els["help-body"].hidden = !open; els["help-toggle"].setAttribute("aria-expanded", String(open)); els["help-toggle"].querySelector("span").textContent = open ? "−" : "＋"; });
+  els["help-toggle"].addEventListener("click", () => {
+    const open = els.help.hidden;
+    els.help.hidden = !open;
+    els["help-toggle"].setAttribute("aria-expanded", String(open));
+    document.getElementById("help-label").textContent = open ? "Close" : "More info";
+    document.getElementById("help-symbol").textContent = open ? "−" : "＋";
+  });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && watchId !== null) requestWakeLock(); });
   const refreshMapLayout = () => window.requestAnimationFrame(() => { map.invalidateSize({ pan: false, animate: false }); renderNavigation(); });
   window.addEventListener("resize", refreshMapLayout, { passive: true });
@@ -446,5 +468,5 @@
     applyNavigationMode(enabled);
     renderNavigation();
   }
-  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
+  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, setFullRouteMode, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
