@@ -13,7 +13,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=2">
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <main id="app">
@@ -34,9 +34,19 @@
       <div class="accuracy" id="accuracy">Nike’s exact 834-point course · location stays on this phone</div>
     </section>
 
+    <section id="direction" class="direction-card" hidden aria-live="polite">
+      <div id="turn-arrow" class="turn-arrow" aria-hidden="true">↑</div>
+      <div class="direction-copy">
+        <span id="direction-label">Point your phone forward</span>
+        <strong id="direction-detail">Waiting for heading</strong>
+      </div>
+      <div id="heading-source" class="heading-source">COMPASS</div>
+    </section>
+
     <section class="actions-card">
       <button id="track" class="primary-button" type="button">Start live tracking</button>
-      <button id="overview" class="secondary-button" type="button">Show full route</button>
+      <button id="navigate" class="secondary-button" type="button">2.5D</button>
+      <button id="overview" class="secondary-button" type="button">Route</button>
     </section>
 
     <section id="help" class="help-card">
@@ -46,6 +56,7 @@
           <li>Tap <b>Start live tracking</b> and allow precise location.</li>
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
           <li>The blue dot is you. The card shows course progress and how far you are from the race line.</li>
+          <li>Tap <b>2.5D</b> and allow Motion &amp; Orientation. Hold the top of your phone toward your running direction; the route and arrow become relative to you.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
         <p><a href="https://www.afterdarktour.nike.com/en/la" target="_blank" rel="noopener">Official Nike race page ↗</a></p>
@@ -56,6 +67,6 @@
   </main>
   <script src="leaflet.js?v=1.9.4"></script>
   <script src="route-data.js?v=2"></script>
-  <script src="app.js?v=2"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

@@ -31,6 +31,28 @@
     return best;
   }
 
+  const normalizeHeading = value => ((value % 360) + 360) % 360;
+  const signedHeading = value => ((value + 540) % 360) - 180;
+  function pointAtCourse(meters) {
+    const target = Math.max(0, Math.min(totalMeters, meters));
+    let high = cumulative.findIndex(value => value >= target);
+    if (high <= 0) return { ...points[0], along: 0 };
+    const low = high - 1;
+    const span = cumulative[high] - cumulative[low];
+    const ratio = span ? (target - cumulative[low]) / span : 0;
+    return {
+      lat: points[low].lat + ratio * (points[high].lat - points[low].lat),
+      lon: points[low].lon + ratio * (points[high].lon - points[low].lon),
+      along: target,
+    };
+  }
+  function bearingBetween(from, to) {
+    const lat1 = toRad(from.lat), lat2 = toRad(to.lat), dLon = toRad(to.lon - from.lon);
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
+  }
+
   const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   const streetTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd",
@@ -60,15 +82,129 @@
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
 
-  const els = Object.fromEntries(["track", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "location-error", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
+  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
+  const navigationCanvas = document.createElement("canvas");
+  navigationCanvas.id = "navigation-view";
+  navigationCanvas.hidden = true;
+  document.getElementById("app").append(navigationCanvas);
   let watchId = null, userMarker = null, accuracyCircle = null, nearestMarker = null, following = true, wakeLock = null;
+  let navigationMode = false, orientationListening = false, deviceHeading = null, headingSource = "", lastCompassAt = 0, currentFix = null, currentNearest = null;
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
 
   function statusClass(element, name) { element.className = name || ""; }
+  function smoothHeading(previous, next) {
+    if (previous === null || !Number.isFinite(previous)) return normalizeHeading(next);
+    return normalizeHeading(previous + signedHeading(next - previous) * .22);
+  }
+  function compassHeading(event) {
+    if (Number.isFinite(event.webkitCompassHeading)) return normalizeHeading(event.webkitCompassHeading);
+    if (!Number.isFinite(event.alpha)) return null;
+    const screenAngle = Number(screen.orientation?.angle || window.orientation || 0);
+    return normalizeHeading(360 - event.alpha + screenAngle);
+  }
+  function onOrientation(event) {
+    const heading = compassHeading(event);
+    if (heading === null) return;
+    deviceHeading = smoothHeading(deviceHeading, heading);
+    headingSource = "COMPASS";
+    lastCompassAt = Date.now();
+    renderNavigation();
+  }
+  function routeInstruction(delta) {
+    const amount = Math.abs(delta);
+    if (amount <= 15) return "Continue straight";
+    if (amount <= 45) return delta > 0 ? "Bear right" : "Bear left";
+    if (amount <= 120) return delta > 0 ? "Turn right" : "Turn left";
+    return "Turn around";
+  }
+  function navigationTarget() {
+    if (!currentFix || !currentNearest) return null;
+    if (currentNearest.distance > 30) return { lat: currentNearest.lat, lon: currentNearest.lon, rejoin: true, distance: currentNearest.distance };
+    if (currentNearest.along >= totalMeters - 15) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
+    const target = pointAtCourse(currentNearest.along + 50);
+    return { ...target, rejoin: false, distance: 50 };
+  }
+  function drawNavigationCourse(target) {
+    const canvas = navigationCanvas;
+    const width = window.innerWidth, height = window.innerHeight, dpr = Math.min(window.devicePixelRatio || 1, 3);
+    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
+      canvas.width = Math.round(width * dpr); canvas.height = Math.round(height * dpr);
+      canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
+    if (!currentFix || deviceHeading === null) return;
+    const centerX = width / 2, originY = height - 156, horizonY = Math.max(230, height * .28), viewDepth = 420;
+    const heading = toRad(deviceHeading), cosLat = Math.cos(toRad(currentFix.lat));
+    const project = point => {
+      const east = toRad(point.lon - currentFix.lon) * R * cosLat;
+      const north = toRad(point.lat - currentFix.lat) * R;
+      const forward = east * Math.sin(heading) + north * Math.cos(heading);
+      const right = east * Math.cos(heading) - north * Math.sin(heading);
+      const forwardRatio = Math.max(-.12, Math.min(1, forward / viewDepth));
+      const depth = forwardRatio >= 0 ? Math.pow(forwardRatio, .72) : forwardRatio;
+      const perspective = 1 - Math.max(0, forwardRatio) * .5;
+      return { x: centerX + right * 1.15 * perspective, y: originY - depth * (originY - horizonY), forward };
+    };
+    const gradient = ctx.createLinearGradient(0, horizonY, 0, originY);
+    gradient.addColorStop(0, "rgba(22,22,22,.22)"); gradient.addColorStop(1, "rgba(0,0,0,.72)");
+    ctx.fillStyle = gradient; ctx.beginPath(); ctx.moveTo(centerX - 28, horizonY); ctx.lineTo(width, originY); ctx.lineTo(0, originY); ctx.lineTo(centerX + 28, horizonY); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.16)"; ctx.lineWidth = 1;
+    for (const distance of [50, 100, 200, 300, 400]) {
+      const y = originY - Math.pow(distance / viewDepth, .72) * (originY - horizonY);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+    }
+    const navigationPoints = [];
+    if (target.rejoin) navigationPoints.push({ lat: currentFix.lat, lon: currentFix.lon }, { lat: target.lat, lon: target.lon });
+    else {
+      navigationPoints.push(pointAtCourse(Math.max(0, currentNearest.along - 20)));
+      for (let along = currentNearest.along; along <= Math.min(totalMeters, currentNearest.along + viewDepth); along += 8) navigationPoints.push(pointAtCourse(along));
+    }
+    const projected = navigationPoints.map(project).filter(point => point.forward >= -50 && point.forward <= viewDepth * 1.15);
+    const stroke = (color, widthValue) => {
+      if (projected.length < 2) return;
+      ctx.beginPath(); ctx.moveTo(projected[0].x, projected[0].y);
+      for (const point of projected.slice(1)) ctx.lineTo(point.x, point.y);
+      ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = color; ctx.lineWidth = widthValue; ctx.stroke();
+    };
+    stroke("rgba(255,255,255,.95)", 17); stroke(target.rejoin ? "#ffb020" : "#ff1616", 10);
+    ctx.fillStyle = "#1689ff"; ctx.strokeStyle = "white"; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(centerX, originY, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  }
+  function renderNavigation() {
+    if (!navigationMode) return;
+    const target = navigationTarget();
+    if (!target || deviceHeading === null) {
+      els["direction-label"].textContent = currentFix ? "Point your phone forward" : "Waiting for location";
+      els["direction-detail"].textContent = deviceHeading === null ? "Waiting for compass or movement" : "Acquiring GPS";
+      navigationCanvas.getContext("2d")?.clearRect(0, 0, navigationCanvas.width, navigationCanvas.height);
+      return;
+    }
+    const desired = bearingBetween(currentFix, target);
+    const delta = signedHeading(desired - deviceHeading);
+    if (target.arrived) {
+      els["turn-arrow"].style.transform = "rotate(0deg)";
+      els["direction-label"].textContent = "Finish reached";
+      els["direction-detail"].textContent = "King Harbor finish area";
+      drawNavigationCourse(target);
+      return;
+    }
+    els["turn-arrow"].style.transform = `rotate(${delta}deg)`;
+    els["direction-label"].textContent = target.rejoin ? `${routeInstruction(delta)} to course` : routeInstruction(delta);
+    els["direction-detail"].textContent = target.rejoin ? `Rejoin course in ${Math.round(feet(target.distance))} ft` : `Aim ${Math.round(target.distance * 3.28084)} ft ahead on course`;
+    els["heading-source"].textContent = headingSource || "HEADING";
+    drawNavigationCourse(target);
+  }
   function updatePosition(position) {
-    const { latitude: lat, longitude: lon, accuracy } = position.coords;
+    const { latitude: lat, longitude: lon, accuracy, heading, speed } = position.coords;
     const nearest = nearestOnCourse(lat, lon);
+    currentFix = { lat, lon, accuracy };
+    currentNearest = nearest;
+    const compassIsFresh = orientationListening && Date.now() - lastCompassAt < 2000;
+    if (Number.isFinite(heading) && heading >= 0 && Number(speed || 0) > .5 && (deviceHeading === null || !compassIsFresh)) {
+      deviceHeading = smoothHeading(deviceHeading, heading);
+      headingSource = "GPS";
+    }
     const progress = Math.min(totalMeters, nearest.along), remaining = Math.max(0, totalMeters - progress);
     const offFeet = feet(nearest.distance);
     els["mile-progress"].textContent = miles(progress).toFixed(2);
@@ -93,6 +229,7 @@
       if (map.getZoom() !== targetZoom || center.distanceTo(ll) > 12) map.setView(ll, targetZoom, { animate: false });
     }
     els.recenter.disabled = false;
+    renderNavigation();
   }
 
   function locationError(error) {
@@ -116,13 +253,55 @@
     watchId = null; els.track.textContent = "Start live tracking"; els.track.classList.remove("tracking");
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
+  function applyNavigationMode(enabled) {
+    navigationMode = enabled;
+    navigationCanvas.hidden = !enabled;
+    els.direction.hidden = !enabled;
+    els.navigate.classList.toggle("active", enabled);
+    els.navigate.textContent = enabled ? "On" : "2.5D";
+    els.navigate.setAttribute("aria-label", enabled ? "2.5D navigation on" : "Enable 2.5D navigation");
+    document.body.classList.toggle("navigation-mode", enabled);
+    if (enabled) {
+      following = true;
+      renderNavigation();
+    } else {
+      const ctx = navigationCanvas.getContext("2d");
+      ctx?.clearRect(0, 0, navigationCanvas.width, navigationCanvas.height);
+    }
+  }
+  async function toggleNavigation() {
+    if (navigationMode) {
+      applyNavigationMode(false);
+      return;
+    }
+    let permission = "granted";
+    try {
+      if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        permission = await DeviceOrientationEvent.requestPermission();
+      }
+    } catch (_) {
+      permission = "denied";
+    }
+    if (permission === "granted" && !orientationListening) {
+      window.addEventListener("deviceorientation", onOrientation, { passive: true });
+      orientationListening = true;
+    }
+    applyNavigationMode(true);
+    if (watchId === null) startTracking();
+    if (permission !== "granted") {
+      els["direction-label"].textContent = "Move to set direction";
+      els["direction-detail"].textContent = "Compass denied · using GPS heading while running";
+      els["heading-source"].textContent = "GPS";
+    }
+  }
   els.track.addEventListener("click", () => watchId === null ? startTracking() : stopTracking());
+  els.navigate.addEventListener("click", toggleNavigation);
   els.recenter.addEventListener("click", () => { following = true; if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: false }); });
-  els.overview.addEventListener("click", () => { following = false; map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] }); });
+  els.overview.addEventListener("click", () => { applyNavigationMode(false); following = false; map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] }); });
   map.on("dragstart", () => { following = false; });
   els["help-toggle"].addEventListener("click", () => { const open = els["help-body"].hidden; els["help-body"].hidden = !open; els["help-toggle"].setAttribute("aria-expanded", String(open)); els["help-toggle"].querySelector("span").textContent = open ? "−" : "＋"; });
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && watchId !== null) requestWakeLock(); });
-  const refreshMapLayout = () => window.requestAnimationFrame(() => map.invalidateSize({ pan: false, animate: false }));
+  const refreshMapLayout = () => window.requestAnimationFrame(() => { map.invalidateSize({ pan: false, animate: false }); renderNavigation(); });
   window.addEventListener("resize", refreshMapLayout, { passive: true });
   window.addEventListener("orientationchange", () => setTimeout(refreshMapLayout, 250), { passive: true });
   window.visualViewport?.addEventListener("resize", refreshMapLayout, { passive: true });
@@ -130,5 +309,11 @@
   setTimeout(refreshMapLayout, 100);
   setTimeout(refreshMapLayout, 1000);
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
-  window.__routeAppTest = { nearestOnCourse, updatePosition, totalMeters, startTracking, stopTracking };
+  function setTestNavigation(heading, enabled = true) {
+    deviceHeading = normalizeHeading(heading);
+    headingSource = "TEST";
+    applyNavigationMode(enabled);
+    renderNavigation();
+  }
+  window.__routeAppTest = { nearestOnCourse, pointAtCourse, bearingBetween, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, routeInstruction, signedHeading };
 })();
