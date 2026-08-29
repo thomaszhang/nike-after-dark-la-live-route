@@ -1,0 +1,36 @@
+
+:root { color-scheme: dark; --red:#ff1616; --panel:rgba(10,10,10,.88); --muted:#a3a3a3; --safe-top:max(12px,env(safe-area-inset-top)); --safe-bottom:max(12px,env(safe-area-inset-bottom)); }
+* { box-sizing:border-box; }
+html, body, #app, #map { width:100%; height:100%; margin:0; overflow:hidden; }
+body { background:#0a0a0a; color:#f5f5f5; font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif; }
+#map { position:fixed; inset:0; background:#171717; }
+.leaflet-control-attribution { font-size:9px; background:rgba(255,255,255,.72)!important; }
+.leaflet-control-zoom { display:none; }
+.course-label { border:0; background:#171717; color:white; border-radius:999px; width:27px!important; height:27px!important; line-height:27px; text-align:center; font-size:11px; font-weight:800; box-shadow:0 1px 5px #0008; }
+.start-finish { border:2px solid white; background:var(--red); color:white; border-radius:6px; width:auto!important; min-width:48px; height:25px!important; padding:0 6px; line-height:21px; text-align:center; font-size:10px; font-weight:900; box-shadow:0 1px 6px #0009; white-space:nowrap; }
+.user-dot { width:22px!important; height:22px!important; border-radius:50%; background:#1689ff; border:4px solid white; box-shadow:0 0 0 8px rgba(22,137,255,.24),0 2px 8px #000a; }
+.top-card, .stats-card, .actions-card, .help-card, .error-card { position:fixed; z-index:800; left:12px; right:12px; background:var(--panel); border:1px solid rgba(255,255,255,.13); box-shadow:0 4px 18px #0007; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+.top-card { top:var(--safe-top); min-height:64px; border-radius:16px; padding:11px 12px 10px 14px; display:flex; align-items:center; justify-content:space-between; }
+.eyebrow { margin:0 0 2px; color:var(--red); font-size:10px; line-height:1; font-weight:900; letter-spacing:.04em; }
+h1 { margin:0; font-size:24px; line-height:1; letter-spacing:-.035em; }
+.icon-button { width:42px; height:42px; border-radius:50%; border:1px solid #555; color:white; background:#232323; font-size:24px; }
+.icon-button:disabled { opacity:.35; }
+.stats-card { top:calc(var(--safe-top) + 72px); border-radius:14px; padding:10px 12px 8px; display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
+.stat { min-width:0; }
+.stat-label { display:block; color:var(--muted); font-size:9px; line-height:1; font-weight:800; margin-bottom:4px; }
+.stat strong { display:block; font-size:15px; line-height:1.1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.stat strong.good { color:#59d887; } .stat strong.warn { color:#ffb020; } .stat strong.bad { color:#ff5252; }
+.accuracy { grid-column:1/-1; color:var(--muted); font-size:10px; line-height:1.25; padding-top:3px; border-top:1px solid #333; }
+.actions-card { bottom:var(--safe-bottom); border-radius:18px; padding:10px; display:grid; grid-template-columns:1fr auto; gap:8px; }
+button { font:inherit; cursor:pointer; touch-action:manipulation; }
+.primary-button, .secondary-button { min-height:50px; border-radius:13px; font-size:15px; font-weight:800; }
+.primary-button { border:0; background:var(--red); color:white; padding:0 18px; }
+.primary-button.tracking { background:#f5f5f5; color:#111; }
+.secondary-button { border:1px solid #555; background:#232323; color:white; padding:0 14px; }
+.help-card { bottom:calc(var(--safe-bottom) + 78px); border-radius:14px; overflow:hidden; }
+.help-card > button { width:100%; min-height:42px; padding:0 13px; color:white; background:transparent; border:0; display:flex; justify-content:space-between; align-items:center; font-size:13px; font-weight:700; }
+#help-body { max-height:38vh; overflow:auto; padding:0 14px 12px; color:#d4d4d4; font-size:12px; line-height:1.4; }
+#help-body ol { margin:2px 0 8px; padding-left:20px; } #help-body p { margin:7px 0 0; } #help-body a { color:#8abfff; }
+.error-card { bottom:calc(var(--safe-bottom) + 132px); border-radius:14px; border-color:#ff5252; padding:12px 14px; color:white; font-size:13px; line-height:1.35; }
+@media (min-width:700px) { .top-card,.stats-card,.actions-card,.help-card,.error-card { left:20px; right:auto; width:390px; } }
+@media (max-height:600px) { .help-card { display:none; } .stats-card { top:calc(var(--safe-top) + 68px); } }
