@@ -15,9 +15,9 @@
   for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1] + segmentMeters(points[i - 1], points[i]));
   const totalMeters = cumulative.at(-1);
 
-  function nearestOnCourse(lat, lon) {
+  function courseCandidates(lat, lon) {
     const cos = Math.cos(toRad(lat));
-    let best = { distance: Infinity, along: 0, lat: points[0].lat, lon: points[0].lon };
+    const candidates = [];
     for (let i = 1; i < points.length; i++) {
       const a = points[i - 1], b = points[i];
       const ax = toRad(a.lon - lon) * R * cos, ay = toRad(a.lat - lat) * R;
@@ -26,9 +26,18 @@
       const denom = dx * dx + dy * dy;
       const t = denom ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / denom)) : 0;
       const x = ax + t * dx, y = ay + t * dy, distance = Math.hypot(x, y);
-      if (distance < best.distance) best = { distance, along: cumulative[i - 1] + t * (cumulative[i] - cumulative[i - 1]), lat: a.lat + t * (b.lat - a.lat), lon: a.lon + t * (b.lon - a.lon) };
+      candidates.push({
+        distance,
+        along: cumulative[i - 1] + t * (cumulative[i] - cumulative[i - 1]),
+        lat: a.lat + t * (b.lat - a.lat),
+        lon: a.lon + t * (b.lon - a.lon),
+        segment: i - 1,
+      });
     }
-    return best;
+    return candidates.sort((a, b) => a.distance - b.distance);
+  }
+  function nearestOnCourse(lat, lon) {
+    return courseCandidates(lat, lon)[0];
   }
 
   const normalizeHeading = value => ((value % 360) + 360) % 360;
@@ -52,6 +61,48 @@
     const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
     return normalizeHeading(Math.atan2(y, x) * 180 / Math.PI);
   }
+  function courseBearing(along) {
+    return bearingBetween(pointAtCourse(along - 18), pointAtCourse(along + 18));
+  }
+  function selectCoursePosition(lat, lon, { previousAlong = null, travelHeading = null, speed = 0, accuracy = 10, elapsedSeconds = 1 } = {}) {
+    const candidates = courseCandidates(lat, lon);
+    const close = candidates.filter(candidate => candidate.distance <= candidates[0].distance + Math.max(12, Number(accuracy || 0)));
+    let best = close[0], bestScore = Infinity;
+    for (const candidate of close) {
+      let score = candidate.distance;
+      if (Number.isFinite(travelHeading) && Number(speed || 0) > .5) {
+        const headingDifference = Math.abs(signedHeading(courseBearing(candidate.along) - travelHeading));
+        score += headingDifference * .28;
+        if (headingDifference > 90) score += 180;
+      }
+      if (Number.isFinite(previousAlong)) {
+        const movement = candidate.along - previousAlong;
+        const expectedRange = Math.max(65, Number(speed || 0) * Math.max(1, elapsedSeconds) * 3 + Number(accuracy || 0) * 2);
+        if (movement < -25) score += 45 + Math.abs(movement) * .08;
+        if (Math.abs(movement) > expectedRange) score += (Math.abs(movement) - expectedRange) * .08;
+      }
+      if (score < bestScore) { best = candidate; bestScore = score; }
+    }
+    return best;
+  }
+
+  function buildManeuvers() {
+    const detected = [];
+    for (let along = 50; along < totalMeters - 50; along += 10) {
+      const incoming = bearingBetween(pointAtCourse(along - 45), pointAtCourse(along - 12));
+      const outgoing = bearingBetween(pointAtCourse(along + 12), pointAtCourse(along + 45));
+      const delta = signedHeading(outgoing - incoming);
+      if (Math.abs(delta) >= 40) detected.push({ along, delta });
+    }
+    const groups = [];
+    for (const item of detected) {
+      const group = groups.at(-1);
+      if (group && item.along - group.at(-1).along <= 35) group.push(item);
+      else groups.push([item]);
+    }
+    return groups.map(group => group.reduce((best, item) => Math.abs(item.delta) > Math.abs(best.delta) ? item : best));
+  }
+  const maneuvers = buildManeuvers();
 
   const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   const streetTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
@@ -82,7 +133,7 @@
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
 
-  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
+  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "guidance", "guidance-arrow", "guidance-title", "guidance-detail", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
   const navigationCanvas = document.createElement("canvas");
   navigationCanvas.id = "navigation-view";
   navigationCanvas.hidden = true;
@@ -117,6 +168,69 @@
     if (amount <= 45) return delta > 0 ? "Bear right" : "Bear left";
     if (amount <= 120) return delta > 0 ? "Turn right" : "Turn left";
     return "Turn around";
+  }
+  function maneuverInstruction(delta) {
+    const amount = Math.abs(delta);
+    if (amount >= 145) return "Turn around";
+    if (amount < 60) return delta > 0 ? "Bear right" : "Bear left";
+    return delta > 0 ? "Turn right" : "Turn left";
+  }
+  function maneuverArrow(delta) {
+    if (Math.abs(delta) >= 145) return "↶";
+    return delta > 0 ? "↱" : "↰";
+  }
+  function relativeArrow(delta) {
+    if (Math.abs(delta) <= 15) return "↑";
+    return maneuverArrow(delta);
+  }
+  function distanceText(meters) {
+    const distanceFeet = feet(Math.max(0, meters));
+    if (distanceFeet < 1000) return `${Math.max(10, Math.round(distanceFeet / 10) * 10)} ft`;
+    return `${miles(meters).toFixed(1)} mi`;
+  }
+  function nextManeuver(along) {
+    return maneuvers.find(item => item.along > along - 35) || null;
+  }
+  function renderGuidance() {
+    if (!currentFix || !currentNearest) return;
+    els.guidance.hidden = false;
+    document.body.classList.add("guidance-active");
+    if (currentNearest.distance > 30) {
+      const target = { lat: currentNearest.lat, lon: currentNearest.lon };
+      const delta = deviceHeading === null ? 0 : signedHeading(bearingBetween(currentFix, target) - deviceHeading);
+      els["guidance-arrow"].textContent = deviceHeading === null ? "↥" : relativeArrow(delta);
+      els["guidance-title"].textContent = deviceHeading === null ? "Return to course" : `${routeInstruction(delta)} to course`;
+      els["guidance-detail"].textContent = `Course is ${distanceText(currentNearest.distance)} away`;
+      return;
+    }
+    if (currentNearest.along >= totalMeters - 15) {
+      els["guidance-arrow"].textContent = "✓";
+      els["guidance-title"].textContent = "Finish reached";
+      els["guidance-detail"].textContent = "King Harbor finish area";
+      return;
+    }
+    const next = nextManeuver(currentNearest.along);
+    if (!next) {
+      const remaining = totalMeters - currentNearest.along;
+      els["guidance-arrow"].textContent = "↑";
+      els["guidance-title"].textContent = remaining <= 60 ? "Finish ahead" : "Continue to finish";
+      els["guidance-detail"].textContent = `${distanceText(remaining)} remaining`;
+      return;
+    }
+    const distance = next.along - currentNearest.along;
+    const instruction = maneuverInstruction(next.delta);
+    els["guidance-arrow"].textContent = maneuverArrow(next.delta);
+    if (distance <= 35) {
+      els["guidance-title"].textContent = `${instruction} now`;
+      els["guidance-detail"].textContent = `Mile ${miles(next.along).toFixed(2)} course turn`;
+    } else if (distance <= 220) {
+      els["guidance-title"].textContent = `${instruction} in ${distanceText(distance)}`;
+      els["guidance-detail"].textContent = `Mile ${miles(next.along).toFixed(2)} course turn`;
+    } else {
+      els["guidance-arrow"].textContent = "↑";
+      els["guidance-title"].textContent = "Continue straight";
+      els["guidance-detail"].textContent = `${instruction} in ${distanceText(distance)}`;
+    }
   }
   function navigationTarget() {
     if (!currentFix || !currentNearest) return null;
@@ -197,8 +311,24 @@
   }
   function updatePosition(position) {
     const { latitude: lat, longitude: lon, accuracy, heading, speed } = position.coords;
-    const nearest = nearestOnCourse(lat, lon);
-    currentFix = { lat, lon, accuracy };
+    const timestamp = Number(position.timestamp || Date.now());
+    const elapsedSeconds = currentFix ? Math.max(.1, (timestamp - currentFix.timestamp) / 1000) : 1;
+    const movementMeters = currentFix ? segmentMeters(currentFix, { lat, lon }) : 0;
+    const movementThreshold = Math.max(3, Math.min(12, Number(accuracy || 10) * .6));
+    const travelHeading = Number.isFinite(heading) && heading >= 0
+      ? heading
+      : currentFix && elapsedSeconds <= 30 && movementMeters >= movementThreshold
+        ? bearingBetween(currentFix, { lat, lon })
+        : null;
+    const travelSpeed = Number(speed) > 0 ? Number(speed) : movementMeters / elapsedSeconds;
+    const nearest = selectCoursePosition(lat, lon, {
+      previousAlong: currentNearest?.along,
+      travelHeading,
+      speed: travelSpeed,
+      accuracy: Number(accuracy || 10),
+      elapsedSeconds,
+    });
+    currentFix = { lat, lon, accuracy, timestamp };
     currentNearest = nearest;
     const compassIsFresh = orientationListening && Date.now() - lastCompassAt < 2000;
     if (Number.isFinite(heading) && heading >= 0 && Number(speed || 0) > .5 && (deviceHeading === null || !compassIsFresh)) {
@@ -229,6 +359,7 @@
       if (map.getZoom() !== targetZoom || center.distanceTo(ll) > 12) map.setView(ll, targetZoom, { animate: false });
     }
     els.recenter.disabled = false;
+    renderGuidance();
     renderNavigation();
   }
 
@@ -315,5 +446,5 @@
     applyNavigationMode(enabled);
     renderNavigation();
   }
-  window.__routeAppTest = { nearestOnCourse, pointAtCourse, bearingBetween, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, routeInstruction, signedHeading };
+  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
