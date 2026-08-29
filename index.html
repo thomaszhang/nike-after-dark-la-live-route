@@ -13,7 +13,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=7">
+  <link rel="stylesheet" href="styles.css?v=8">
 </head>
 <body>
   <main id="app">
@@ -24,7 +24,7 @@
         <strong id="guidance-title">Continue straight</strong>
         <span id="guidance-detail">Waiting for location</span>
       </div>
-      <button id="recenter" class="icon-button" type="button" title="Center on my location" aria-label="Center on my location" disabled>◎</button>
+      <button id="recenter" class="icon-button" type="button" title="Center and rotate with my direction" aria-label="Center and rotate with my direction" disabled>◎</button>
     </section>
     <section id="stats" class="stats-card" aria-live="polite">
       <div class="info-header">
@@ -51,7 +51,7 @@
 
     <section class="actions-card">
       <button id="track" class="primary-button" type="button">Start live tracking</button>
-      <button id="navigate" class="secondary-button" type="button">2.5D</button>
+      <button id="navigate" class="secondary-button" type="button">Heading</button>
       <button id="overview" class="secondary-button" type="button" aria-label="Show full route">Full route</button>
     </section>
 
@@ -62,7 +62,7 @@
           <li>Tap <b>Start live tracking</b> and allow precise location.</li>
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
           <li>The blue dot is you. The card shows course progress and how far you are from the race line.</li>
-          <li>Tap <b>2.5D</b> and allow Motion &amp; Orientation. Hold the top of your phone toward your running direction; the route and arrow become relative to you.</li>
+          <li>Tap <b>Heading</b> to rotate the street map and route in your running direction. GPS movement leads while you run; the phone compass fills in when you slow down.</li>
           <li>The top banner shows the next course turn and updates as you move.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
@@ -74,6 +74,6 @@
   </main>
   <script src="leaflet.js?v=1.9.4"></script>
   <script src="route-data.js?v=2"></script>
-  <script src="app.js?v=6"></script>
+  <script src="app.js?v=7"></script>
 </body>
 </html>
