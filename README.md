@@ -9,6 +9,8 @@ This is a static progressive web app: there is no application server, account, o
 - Starts precise GPS tracking automatically after location permission is granted.
 - Matches each location fix to the most plausible point on the course, including crossings and nearby parallel segments.
 - Shows completed distance, distance remaining, course status, and GPS accuracy in a four-column summary.
+- Draws the course in translucent Nike red with directional arrows so overlapping out-and-back sections remain distinguishable without hiding the basemap.
+- Includes a compact elevation profile; slide across it to preview distance and a corresponding point on the route, then release to return to live tracking.
 - Rotates only the visual map panes for heading-up navigation, so touch dragging stays aligned with the screen.
 - Smooths compass changes with a 1.5° dead zone and 220 ms response curve.
 - Detects upcoming course turns from the route geometry.
@@ -84,6 +86,12 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 `route-data.js` contains the official source polyline and mile markers from:
 
 <https://www.afterdarktour.nike.com/en/la>
+
+`course-elevation.js` contains 101 terrain samples along that polyline. Elevation is based on the Copernicus DEM 2021 GLO-90 dataset at 90 m resolution, retrieved through the Open-Meteo Elevation API on 2026-08-30:
+
+<https://open-meteo.com/en/docs/elevation-api>
+
+The sampled profile is stored locally. The live app does not send coordinates to an elevation service.
 
 The official page advertises 13.1 miles. Its current source polyline measures approximately 13.32 miles. Race-day closures and course revisions can differ, so re-check Nike's official page before the event.
 

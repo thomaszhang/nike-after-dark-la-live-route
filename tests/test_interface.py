@@ -9,9 +9,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=16')
-    assert 'styles.css?v=16' in HTML
-    for asset in ('styles.css?v=16', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=16'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=18')
+    assert 'styles.css?v=18' in HTML
+    for asset in ('styles.css?v=18', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=18'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -91,6 +91,42 @@ def test_center_does_not_change_heading_preference():
     function_start = JS.index(f"function {handler.group(1)}()")
     function_end = JS.index("\n  }", function_start)
     assert "toggleNavigation" not in JS[function_start:function_end]
+
+
+def test_course_uses_transparent_nike_red_and_direction_arrows():
+    assert 'color: "#e90000"' in JS
+    assert re.search(r'color: "#e90000"[^\n]*opacity: \.34', JS)
+    assert "route-direction-arrow" in JS
+    assert "routeArrowDistances" in JS
+    assert "updateRouteArrowVisibility" in JS
+    assert 'map.on("zoomend moveend", updateRouteArrowVisibility)' in JS
+    assert "position.distanceTo(other) < 22" in JS
+    assert "Math.cos(radians) * 11" in JS
+    assert "translateY(11px)" in JS
+    assert ">➤</span>" in JS
+    assert "bearingBetween(previous, next)" in JS
+    assert re.search(r"\.route-direction-arrow\s*\{[^}]*color:#e90000", CSS, re.DOTALL)
+
+
+def test_elevation_profile_is_local_interactive_and_restores_live_state():
+    assert 'course-elevation.js?v=1' in HTML
+    assert '"course-elevation.js?v=1"' in SW
+    assert 'id="elevation-profile"' in HTML
+    assert 'aria-label="Course elevation profile. Slide to preview the course."' in HTML
+    assert 'aria-orientation="horizontal"' in HTML
+    assert 'id="elevation-chart"' in HTML
+    assert 'id="elevation-cursor"' in HTML
+    assert 'id="elevation-value"' in HTML
+    assert "pointerdown" in JS and "pointermove" in JS
+    assert "setPointerCapture" in JS
+    assert "previewCourseAt" in JS
+    assert "endCoursePreview" in JS
+    assert "previewMarker" in JS
+    assert "previewSavedView" in JS
+    assert "renderLiveSummary" in JS
+    assert "api.open-meteo.com" not in JS
+    assert "fetch(" not in JS
+    assert re.search(r"\.elevation-profile\s*\{[^}]*touch-action:none", CSS, re.DOTALL)
 
 
 def test_map_and_interface_follow_system_appearance():

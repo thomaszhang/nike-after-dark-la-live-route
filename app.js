@@ -1,6 +1,7 @@
 (() => {
   "use strict";
   const route = window.NIKE_ROUTE;
+  const elevation = window.CourseElevation;
   const { createAngleSmoother } = window.HeadingSmoothing;
   const points = route.points.map(([lon, lat]) => ({ lon, lat }));
   const R = 6371008.8;
@@ -132,14 +133,50 @@
   });
   const routeLatLngs = points.map(p => [p.lat, p.lon]);
   const courseRenderer = L.Browser.svg ? L.svg({ padding: .5 }) : L.canvas({ padding: .5 });
-  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 12, opacity: .9, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
-  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ff1616", weight: 7, opacity: 1, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
+  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 5, opacity: .16, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
+  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#e90000", weight: 3, opacity: .34, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
   map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
 
   const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
   L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
+  let currentFix = null;
+  const routeArrowDistances = Array.from({ length: Math.floor(totalMeters / 804.672) }, (_, index) => (index + 1) * 804.672);
+  const routeArrowMarkers = routeArrowDistances.map((along, index) => {
+    const previous = pointAtCourse(Math.max(0, along - 12));
+    const next = pointAtCourse(Math.min(totalMeters, along + 12));
+    const bearing = bearingBetween(previous, next);
+    const icon = L.divIcon({
+      className: "route-direction-icon",
+      html: `<span class="route-direction-arrow" style="display:grid;transform:rotate(${bearing - 90}deg) translateY(11px)">➤</span>`,
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+    });
+    const point = pointAtCourse(along);
+    return { index, point, bearing, marker: L.marker([point.lat, point.lon], { icon, interactive: false, keyboard: false, zIndexOffset: 300 }).addTo(map) };
+  });
+  const routeLabelPoints = [
+    { lat: route.start[1], lon: route.start[0] },
+    { lat: route.finish[1], lon: route.finish[0] },
+    ...route.mileMarkers.map(marker => ({ lat: marker.coordinates[1], lon: marker.coordinates[0] })),
+  ];
+  function updateRouteArrowVisibility() {
+    const interval = map.getZoom() <= 13 ? 4 : map.getZoom() <= 15 ? 2 : 1;
+    const occupied = routeLabelPoints.map(point => map.latLngToContainerPoint([point.lat, point.lon]));
+    if (currentFix) occupied.push(map.latLngToContainerPoint([currentFix.lat, currentFix.lon]));
+    routeArrowMarkers.forEach(({ index, point, bearing, marker }) => {
+      const routePosition = map.latLngToContainerPoint([point.lat, point.lon]);
+      const radians = bearing * Math.PI / 180;
+      const position = L.point(routePosition.x + Math.cos(radians) * 11, routePosition.y + Math.sin(radians) * 11);
+      const collides = occupied.some(other => position.distanceTo(other) < 22);
+      const visible = index % interval === 0 && !collides;
+      marker.setOpacity(visible ? 1 : 0);
+      if (visible) occupied.push(position);
+    });
+  }
+  map.on("zoomend moveend", updateRouteArrowVisibility);
+  updateRouteArrowVisibility();
 
   const headingPane = document.createElement("div");
   headingPane.className = "leaflet-heading-pane";
@@ -153,7 +190,8 @@
   const elementIds = [
     "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "accuracy",
     "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
-    "help-toggle", "help-body",
+    "help-toggle", "help-body", "elevation-profile", "elevation-chart", "elevation-area", "elevation-line",
+    "elevation-cursor", "elevation-value",
   ];
   const els = Object.fromEntries(elementIds.map(id => [id, document.getElementById(id)]));
   let watchId = null;
@@ -172,14 +210,29 @@
   let lastCompassAt = 0;
   let lastGpsHeadingAt = 0;
   let currentSpeed = 0;
-  let currentFix = null;
   let currentNearest = null;
+  let liveSummary = null;
+  let previewMarker = null;
+  let previewSavedView = null;
+  let previewDistance = null;
   let rotationFrame = null, lastRotationFrameAt = null;
   const mapAngleSmoother = createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 });
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
   const summaryMiles = meters => `${miles(meters).toFixed(1).replace(/\.0$/, "")} miles`;
+
+  function renderLiveSummary() {
+    if (!liveSummary || previewDistance !== null) return;
+    els.distance.textContent = summaryMiles(liveSummary.progress);
+    els.remaining.textContent = summaryMiles(liveSummary.remaining);
+    els["course-status"].textContent = liveSummary.status;
+    statusClass(els["course-status"], liveSummary.statusClass);
+    els.accuracy.textContent = `±${Math.round(feet(liveSummary.accuracy))} feet`;
+    const liveMile = Number(miles(liveSummary.progress).toFixed(1));
+    els["elevation-profile"].setAttribute("aria-valuenow", String(liveMile));
+    els["elevation-profile"].setAttribute("aria-valuetext", `Live position · mile ${liveMile}`);
+  }
 
   function statusClass(element, name) { element.className = name || ""; }
   function smoothHeading(previous, next, amount = .65) {
@@ -367,12 +420,11 @@
     }
     const progress = Math.min(totalMeters, nearest.along), remaining = Math.max(0, totalMeters - progress);
     const offFeet = feet(nearest.distance);
-    els.distance.textContent = summaryMiles(progress);
-    els.remaining.textContent = summaryMiles(remaining);
-    if (offFeet <= 100) { els["course-status"].textContent = "On course"; statusClass(els["course-status"], "good"); }
-    else if (offFeet <= 300) { els["course-status"].textContent = "Nearby"; statusClass(els["course-status"], "warn"); }
-    else { els["course-status"].textContent = "Off course"; statusClass(els["course-status"], "bad"); }
-    els.accuracy.textContent = `±${Math.round(feet(accuracy))} feet`;
+    let courseStatus = "Off course", courseStatusClass = "bad";
+    if (offFeet <= 100) { courseStatus = "On course"; courseStatusClass = "good"; }
+    else if (offFeet <= 300) { courseStatus = "Nearby"; courseStatusClass = "warn"; }
+    liveSummary = { progress, remaining, status: courseStatus, statusClass: courseStatusClass, accuracy: Number(accuracy || 10) };
+    renderLiveSummary();
     els["location-error"].hidden = true;
     const ll = [lat, lon];
     if (!userMarker) {
@@ -382,13 +434,14 @@
     } else {
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy); nearestMarker.setLatLng([nearest.lat, nearest.lon]);
     }
-    if (following) {
+    if (following && previewDistance === null) {
       const targetZoom = Math.max(map.getZoom(), navigationMode ? 17 : 16);
       const viewCenter = navigationMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       const centerLatLng = [viewCenter.lat, viewCenter.lon];
       const center = map.getCenter();
       if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) map.setView(centerLatLng, targetZoom, { animate: false });
     }
+    updateRouteArrowVisibility();
     renderNavigation();
   }
 
@@ -413,6 +466,86 @@
     watchId = null;
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
+
+  function renderElevationProfile() {
+    const samples = elevation.samples;
+    const elevations = samples.map(sample => sample[1]);
+    const minimum = Math.min(...elevations) - 3;
+    const maximum = Math.max(...elevations) + 3;
+    const range = Math.max(1, maximum - minimum);
+    const coordinates = samples.map(([along, meters]) => {
+      const x = along / totalMeters * 220;
+      const y = 27 - (meters - minimum) / range * 24;
+      return [x, y];
+    });
+    const linePath = coordinates.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+    els["elevation-line"].setAttribute("d", linePath);
+    els["elevation-area"].setAttribute("d", `${linePath} L220,30 L0,30 Z`);
+  }
+
+  const previewIcon = L.divIcon({ className: "route-preview-dot", iconSize: [16, 16], iconAnchor: [8, 8] });
+  function previewCourseAt(along) {
+    const target = Math.max(0, Math.min(totalMeters, along));
+    if (previewDistance === null) previewSavedView = { center: map.getCenter(), zoom: map.getZoom() };
+    previewDistance = target;
+    const point = pointAtCourse(target);
+    const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
+    if (!previewMarker) previewMarker = L.marker([point.lat, point.lon], { icon: previewIcon, interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
+    else previewMarker.setLatLng([point.lat, point.lon]);
+    map.panTo([point.lat, point.lon], { animate: false });
+    els.distance.textContent = summaryMiles(target);
+    els.remaining.textContent = summaryMiles(totalMeters - target);
+    els["elevation-value"].textContent = `${Math.round(feet(elevationMeters))} FT`;
+    const chartX = target / totalMeters * 220;
+    els["elevation-cursor"].setAttribute("x1", chartX.toFixed(2));
+    els["elevation-cursor"].setAttribute("x2", chartX.toFixed(2));
+    els["elevation-cursor"].removeAttribute("hidden");
+    const mileValue = Number(miles(target).toFixed(1));
+    els["elevation-profile"].setAttribute("aria-valuenow", String(mileValue));
+    els["elevation-profile"].setAttribute("aria-valuetext", `Mile ${mileValue} · ${Math.round(feet(elevationMeters))} feet elevation`);
+  }
+
+  function endCoursePreview() {
+    if (previewDistance === null) return;
+    previewDistance = null;
+    if (previewMarker) { map.removeLayer(previewMarker); previewMarker = null; }
+    if (following && currentFix && !fullRouteMode) {
+      const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
+      const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
+      map.setView([viewCenter.lat, viewCenter.lon], previewSavedView?.zoom ?? map.getZoom(), { animate: false });
+    } else if (previewSavedView) map.setView(previewSavedView.center, previewSavedView.zoom, { animate: false });
+    previewSavedView = null;
+    els["elevation-cursor"].setAttribute("hidden", "");
+    els["elevation-value"].textContent = "ELEVATION";
+    renderLiveSummary();
+  }
+
+  function previewFromPointer(event) {
+    const rect = els["elevation-chart"].getBoundingClientRect();
+    previewCourseAt(elevation.distanceFromPointer(event.clientX, rect.left, rect.width, totalMeters));
+  }
+
+  els["elevation-profile"].addEventListener("pointerdown", event => {
+    els["elevation-profile"].setPointerCapture(event.pointerId);
+    previewFromPointer(event);
+  });
+  els["elevation-profile"].addEventListener("pointermove", event => {
+    if (els["elevation-profile"].hasPointerCapture(event.pointerId)) previewFromPointer(event);
+  });
+  els["elevation-profile"].addEventListener("pointerup", endCoursePreview);
+  els["elevation-profile"].addEventListener("pointercancel", endCoursePreview);
+  els["elevation-profile"].addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const base = previewDistance ?? liveSummary?.progress ?? 0;
+    const step = totalMeters / 100;
+    previewCourseAt(event.key === "Home" ? 0 : event.key === "End" ? totalMeters : base + (event.key === "ArrowRight" ? step : -step));
+  });
+  els["elevation-profile"].addEventListener("keyup", event => {
+    if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) endCoursePreview();
+  });
+  els["elevation-profile"].addEventListener("blur", endCoursePreview);
+  renderElevationProfile();
   function setFullRouteMode(enabled) {
     fullRouteMode = enabled;
     els["route-control"].classList.toggle("active", enabled);

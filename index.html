@@ -14,7 +14,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
   <main id="app">
@@ -26,6 +26,14 @@
         <button id="help-toggle" class="info-button" type="button" aria-expanded="false">
           <span id="help-label">More info</span><span id="help-symbol" aria-hidden="true">＋</span>
         </button>
+      </div>
+      <div id="elevation-profile" class="elevation-profile" role="slider" tabindex="0" aria-orientation="horizontal" aria-label="Course elevation profile. Slide to preview the course." aria-valuemin="0" aria-valuemax="13.3" aria-valuenow="0" aria-valuetext="Start · 26 feet elevation">
+        <svg id="elevation-chart" viewBox="0 0 220 30" preserveAspectRatio="none" aria-hidden="true">
+          <path id="elevation-area" class="elevation-area"></path>
+          <path id="elevation-line" class="elevation-line"></path>
+          <line id="elevation-cursor" class="elevation-cursor" x1="0" x2="0" y1="2" y2="28" hidden></line>
+        </svg>
+        <span id="elevation-value" class="elevation-value">ELEVATION</span>
       </div>
       <div class="stat"><span class="stat-label">DISTANCE</span><strong id="distance">—</strong></div>
       <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
@@ -63,8 +71,10 @@
           <li>The blue dot is you. Distance, remaining distance, status, and accuracy stay at the top.</li>
           <li>The bottom navigation card combines your next course turn and live heading direction.</li>
           <li><b>Route</b> fits the course, <b>Center</b> returns to your location, and <b>Direction</b> toggles heading-up rotation.</li>
+          <li>Slide across the elevation profile to preview distance and a point on the course. Release to return to live tracking.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
+        <p>Elevation: Copernicus DEM GLO-90 via <a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo ↗</a>.</p>
         <p><a href="https://www.afterdarktour.nike.com/en/la" target="_blank" rel="noopener">Official Nike race page ↗</a></p>
       </div>
     </section>
@@ -73,7 +83,8 @@
   </main>
   <script src="leaflet.js?v=1.9.4"></script>
   <script src="route-data.js?v=2"></script>
+  <script src="course-elevation.js?v=1"></script>
   <script src="heading-smoothing.js?v=1"></script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

@@ -21,7 +21,8 @@ The main design goals are:
 5. `selectCoursePosition()` scores plausible candidates using distance, recent progress, GPS accuracy, speed, and travel heading. This reduces jumps at crossings and nearby parallel segments.
 6. The selected point updates progress, remaining distance, off-course status, user/route markers, and navigation guidance.
 7. Compass events or movement-derived GPS headings update the heading target.
-8. `heading-smoothing.js` advances the visible map angle on animation frames.
+8. The elevation profile reads locally stored Copernicus DEM samples. Pointer movement interpolates a course distance, temporarily updates the summary, and places a preview marker at `pointAtCourse(distance)`; release restores the newest live summary and the saved map view.
+9. `heading-smoothing.js` advances the visible map angle on animation frames.
 
 No fix is sent to an application server or written to persistent project storage.
 
@@ -78,6 +79,8 @@ These thresholds are product behavior and safety behavior. Change them only with
 The application follows `prefers-color-scheme`. OpenStreetMap provides the map tiles; dark appearance is applied locally to the map presentation rather than switching to a credentialed tile provider.
 
 The bottom bar separates view and heading state. Route fits the complete course, Center returns to the live location, and Direction independently toggles heading-up rotation. Green dots indicate active controls; Center and Direction start active. Heading-up mode leads the map center approximately 70 m in front of the current position. Route mode disables following until the user chooses Center.
+
+The course uses a translucent Nike-red line, a restrained white edge, and direction arrows offset to the right of travel so opposite directions separate across shared geometry. Arrow density adapts to zoom: two-mile spacing in the full-course view, one mile at medium zoom, and half-mile spacing at street zoom.
 
 ## Offline and cache updates
 
