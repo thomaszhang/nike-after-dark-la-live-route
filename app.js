@@ -106,14 +106,18 @@
   const maneuvers = buildManeuvers();
 
   const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
-  const streetTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  const appearance = window.matchMedia("(prefers-color-scheme: dark)");
+  const tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+  const applyAppearance = dark => document.body.classList.toggle("dark-appearance", dark);
+  applyAppearance(appearance.matches);
+  const streetTiles = L.tileLayer(tileUrl, {
     subdomains: "abcd",
     maxZoom: 20,
     detectRetina: true,
     updateWhenIdle: true,
     updateWhenZooming: false,
     keepBuffer: 4,
-    attribution: "© OpenStreetMap © CARTO",
+    attribution: "© OpenStreetMap contributors",
   }).addTo(map);
   streetTiles.on("tileerror", event => {
     const tile = event.tile;
@@ -134,9 +138,18 @@
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
 
-  const els = Object.fromEntries(["track", "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "guidance", "guidance-arrow", "guidance-title", "guidance-detail", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
+  const headingPane = document.createElement("div");
+  headingPane.className = "leaflet-heading-pane";
+  const mapPane = map.getPane("mapPane");
+  mapPane.appendChild(headingPane);
+  ["tilePane", "overlayPane", "shadowPane", "markerPane", "tooltipPane", "popupPane"].forEach(name => {
+    const pane = map.getPane(name);
+    if (pane) headingPane.appendChild(pane);
+  });
+
+  const els = Object.fromEntries(["navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
   let watchId = null, userMarker = null, accuracyCircle = null, nearestMarker = null, following = true, wakeLock = null;
-  let navigationMode = false, fullRouteMode = false, orientationListening = false, deviceHeading = null, compassValue = null, mapRotation = 0, headingSource = "", lastCompassAt = 0, lastGpsHeadingAt = 0, currentSpeed = 0, currentFix = null, currentNearest = null;
+  let navigationMode = true, fullRouteMode = false, orientationListening = false, deviceHeading = null, compassValue = null, mapRotation = 0, headingSource = "", lastCompassAt = 0, lastGpsHeadingAt = 0, currentSpeed = 0, currentFix = null, currentNearest = null;
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
@@ -220,99 +233,66 @@
   function nextManeuver(along) {
     return maneuvers.find(item => item.along > along - 35) || null;
   }
-  function renderGuidance() {
-    if (!currentFix || !currentNearest) return;
-    els.guidance.hidden = false;
-    document.body.classList.add("guidance-active");
-    if (currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) {
-      els["guidance-arrow"].textContent = "!";
-      els["guidance-title"].textContent = "Navigation paused";
-      els["guidance-detail"].textContent = `${distanceText(currentNearest.distance)} from course · use Full route`;
-      return;
-    }
-    if (currentNearest.distance > 30) {
-      const target = { lat: currentNearest.lat, lon: currentNearest.lon };
-      const delta = deviceHeading === null ? 0 : signedHeading(bearingBetween(currentFix, target) - deviceHeading);
-      els["guidance-arrow"].textContent = deviceHeading === null ? "↥" : relativeArrow(delta);
-      els["guidance-title"].textContent = deviceHeading === null ? "Return to course" : `${routeInstruction(delta)} to course`;
-      els["guidance-detail"].textContent = `Course is ${distanceText(currentNearest.distance)} away`;
-      return;
-    }
-    if (currentNearest.along >= totalMeters - 15) {
-      els["guidance-arrow"].textContent = "✓";
-      els["guidance-title"].textContent = "Finish reached";
-      els["guidance-detail"].textContent = "King Harbor finish area";
-      return;
-    }
-    const next = nextManeuver(currentNearest.along);
-    if (!next) {
-      const remaining = totalMeters - currentNearest.along;
-      els["guidance-arrow"].textContent = "↑";
-      els["guidance-title"].textContent = remaining <= 60 ? "Finish ahead" : "Continue to finish";
-      els["guidance-detail"].textContent = `${distanceText(remaining)} remaining`;
-      return;
-    }
-    const distance = next.along - currentNearest.along;
-    const instruction = maneuverInstruction(next.delta);
-    els["guidance-arrow"].textContent = maneuverArrow(next.delta);
-    if (distance <= 35) {
-      els["guidance-title"].textContent = `${instruction} now`;
-      els["guidance-detail"].textContent = `Mile ${miles(next.along).toFixed(2)} course turn`;
-    } else if (distance <= 220) {
-      els["guidance-title"].textContent = `${instruction} in ${distanceText(distance)}`;
-      els["guidance-detail"].textContent = `Mile ${miles(next.along).toFixed(2)} course turn`;
-    } else {
-      els["guidance-arrow"].textContent = "↑";
-      els["guidance-title"].textContent = "Continue straight";
-      els["guidance-detail"].textContent = `${instruction} in ${distanceText(distance)}`;
-    }
-  }
   function navigationTarget() {
     if (!currentFix || !currentNearest) return null;
     if (currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) return { paused: true, distance: currentNearest.distance };
     if (currentNearest.distance > 30) return { lat: currentNearest.lat, lon: currentNearest.lon, rejoin: true, distance: currentNearest.distance };
     if (currentNearest.along >= totalMeters - 15) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
-    const target = pointAtCourse(currentNearest.along + 50);
-    return { ...target, rejoin: false, distance: 50 };
+    return { ...pointAtCourse(currentNearest.along + 50), rejoin: false, distance: 50 };
   }
   function rotateMap() {
-    const heading = navigationMode && Number.isFinite(deviceHeading) ? deviceHeading : 0;
+    const heading = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading) ? deviceHeading : 0;
     const desiredRotation = -heading;
     mapRotation += signedHeading(desiredRotation - mapRotation);
-    const mapElement = document.getElementById("map");
-    mapElement.style.rotate = `${mapRotation}deg`;
-    mapElement.style.setProperty("--map-heading", `${-mapRotation}deg`);
+    headingPane.style.rotate = `${mapRotation}deg`;
+    document.getElementById("map").style.setProperty("--map-heading", `${-mapRotation}deg`);
+  }
+  function showDirection({ arrow = "↑", rotation = 0, label, detail, source } = {}) {
+    els["turn-arrow"].textContent = arrow;
+    els["turn-arrow"].style.transform = `rotate(${rotation}deg)`;
+    els["direction-label"].textContent = label;
+    els["direction-detail"].textContent = detail;
+    els["heading-source"].textContent = source || (navigationMode ? headingSource || "HEADING" : "NORTH UP");
   }
   function renderNavigation() {
     rotateMap();
-    if (!navigationMode) return;
     const target = navigationTarget();
-    if (target?.paused) {
-      els["turn-arrow"].style.transform = "rotate(0deg)";
-      els["turn-arrow"].textContent = "!";
-      els["direction-label"].textContent = "Too far for a direct cue";
-      els["direction-detail"].textContent = `${distanceText(target.distance)} from course · open Full route`;
-      els["heading-source"].textContent = "PAUSED";
+    if (!target) {
+      showDirection({ label: "Waiting for location", detail: "Live tracking is on", source: navigationMode ? "HEADING" : "NORTH UP" });
       return;
     }
-    if (!target || deviceHeading === null) {
-      els["direction-label"].textContent = currentFix ? "Move to set direction" : "Waiting for location";
-      els["direction-detail"].textContent = deviceHeading === null ? "Waiting for GPS movement or compass" : "Acquiring GPS";
+    if (target.paused) {
+      showDirection({ arrow: "!", label: "Navigation paused", detail: `${distanceText(target.distance)} from course · open Full route`, source: "PAUSED" });
       return;
     }
-    els["turn-arrow"].textContent = "↑";
-    const desired = bearingBetween(currentFix, target);
-    const delta = signedHeading(desired - deviceHeading);
     if (target.arrived) {
-      els["turn-arrow"].style.transform = "rotate(0deg)";
-      els["direction-label"].textContent = "Finish reached";
-      els["direction-detail"].textContent = "King Harbor finish area";
+      showDirection({ arrow: "✓", label: "Finish reached", detail: "King Harbor finish area" });
       return;
     }
-    els["turn-arrow"].style.transform = `rotate(${delta}deg)`;
-    els["direction-label"].textContent = target.rejoin ? `${routeInstruction(delta)} to course` : routeInstruction(delta);
-    els["direction-detail"].textContent = target.rejoin ? `Rejoin course in ${Math.round(feet(target.distance))} ft` : `Map faces your direction · route continues ahead`;
-    els["heading-source"].textContent = headingSource || "HEADING";
+    if (target.rejoin) {
+      if (deviceHeading === null) {
+        showDirection({ arrow: "↥", label: "Return to course", detail: `Course is ${distanceText(target.distance)} away` });
+        return;
+      }
+      const delta = signedHeading(bearingBetween(currentFix, target) - deviceHeading);
+      showDirection({ arrow: relativeArrow(delta), label: `${routeInstruction(delta)} to course`, detail: `Rejoin course in ${distanceText(target.distance)}` });
+      return;
+    }
+    const next = nextManeuver(currentNearest.along);
+    if (!next) {
+      const remaining = totalMeters - currentNearest.along;
+      showDirection({ arrow: "↑", label: remaining <= 60 ? "Finish ahead" : "Continue to finish", detail: `${distanceText(remaining)} remaining` });
+      return;
+    }
+    const distance = next.along - currentNearest.along;
+    const instruction = maneuverInstruction(next.delta);
+    if (distance <= 35) {
+      showDirection({ arrow: maneuverArrow(next.delta), label: `${instruction} now`, detail: `Mile ${miles(next.along).toFixed(2)} course turn` });
+    } else if (distance <= 220) {
+      showDirection({ arrow: maneuverArrow(next.delta), label: `${instruction} in ${distanceText(distance)}`, detail: `Mile ${miles(next.along).toFixed(2)} course turn` });
+    } else {
+      showDirection({ arrow: "↑", label: "Continue straight", detail: `${instruction} in ${distanceText(distance)}` });
+    }
   }
   function updatePosition(position) {
     const { latitude: lat, longitude: lon, accuracy, heading, speed } = position.coords;
@@ -374,15 +354,13 @@
       if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) map.setView(centerLatLng, targetZoom, { animate: false });
     }
     els.recenter.disabled = false;
-    renderGuidance();
     renderNavigation();
   }
 
   function locationError(error) {
-    const messages = { 1: "Location permission is off. In Safari, tap aA → Website Settings → Location → Allow, then try again.", 2: "Your location is temporarily unavailable. Move outdoors and try again.", 3: "GPS took too long to respond. Tap Start live tracking again." };
+    const messages = { 1: "Location permission is off. In Safari, tap aA → Website Settings → Location → Allow, then reload this page.", 2: "Your location is temporarily unavailable. Move outdoors while this page keeps trying.", 3: "GPS is taking longer than expected. Move outdoors while this page keeps trying." };
     els["location-error"].textContent = messages[error.code] || "Could not read your location.";
     els["location-error"].hidden = false;
-    stopTracking();
   }
 
   async function requestWakeLock() {
@@ -390,26 +368,28 @@
   }
   function startTracking() {
     if (!navigator.geolocation) return locationError({ code: 2 });
-    els.track.textContent = "Stop tracking"; els.track.classList.add("tracking"); following = true;
+    if (watchId !== null) return;
+    following = true;
     watchId = navigator.geolocation.watchPosition(updatePosition, locationError, { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 });
     requestWakeLock();
   }
   function stopTracking() {
     if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-    watchId = null; els.track.textContent = "Start live tracking"; els.track.classList.remove("tracking");
+    watchId = null;
     if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
   }
   function setFullRouteMode(enabled) {
     fullRouteMode = enabled;
     els.overview.textContent = enabled ? "Live map" : "Full route";
     els.overview.classList.toggle("active", enabled);
+    els.overview.setAttribute("aria-pressed", String(enabled));
     els.overview.setAttribute("aria-label", enabled ? "Return to live heading-up map" : "Show full route");
   }
   function applyNavigationMode(enabled) {
     navigationMode = enabled;
-    els.direction.hidden = !enabled;
     els.navigate.classList.toggle("active", enabled);
-    els.navigate.textContent = enabled ? "On" : "Heading";
+    els.navigate.textContent = enabled ? "Heading on" : "Heading off";
+    els.navigate.setAttribute("aria-pressed", String(enabled));
     els.navigate.setAttribute("aria-label", enabled ? "Heading-up navigation on" : "Enable heading-up navigation");
     document.body.classList.toggle("navigation-mode", enabled);
     map.invalidateSize({ pan: false, animate: false });
@@ -445,33 +425,32 @@
       orientationListening = true;
     }
     applyNavigationMode(true);
-    if (watchId === null) startTracking();
     if (permission !== "granted") {
       els["direction-label"].textContent = "Move to set direction";
       els["direction-detail"].textContent = "Compass denied · using GPS heading while running";
       els["heading-source"].textContent = "GPS";
     }
   }
-  els.track.addEventListener("click", () => watchId === null ? startTracking() : stopTracking());
   els.navigate.addEventListener("click", toggleNavigation);
-  els.recenter.addEventListener("click", async () => {
+  function centerLiveMap() {
     setFullRouteMode(false);
     following = true;
-    if (!navigationMode) await toggleNavigation();
     if (currentFix) {
-      const viewCenter = Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
-      map.setView([viewCenter.lat, viewCenter.lon], 17, { animate: false });
+      const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
+      const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
+      map.setView([viewCenter.lat, viewCenter.lon], navigationMode ? 17 : 16, { animate: false });
     }
     renderNavigation();
-  });
-  els.overview.addEventListener("click", async () => {
+  }
+  els.recenter.addEventListener("click", centerLiveMap);
+  els.overview.addEventListener("click", () => {
     if (fullRouteMode) {
-      await toggleNavigation();
+      centerLiveMap();
       return;
     }
-    applyNavigationMode(false);
     setFullRouteMode(true);
     following = false;
+    rotateMap();
     map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
   });
   map.on("dragstart", () => { following = false; });
@@ -482,7 +461,12 @@
     document.getElementById("help-label").textContent = open ? "Close" : "More info";
     document.getElementById("help-symbol").textContent = open ? "−" : "＋";
   });
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && watchId !== null) requestWakeLock(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState !== "visible") return;
+    if (watchId === null) startTracking();
+    requestWakeLock();
+  });
+  appearance.addEventListener?.("change", event => applyAppearance(event.matches));
   const refreshMapLayout = () => window.requestAnimationFrame(() => { map.invalidateSize({ pan: false, animate: false }); renderNavigation(); });
   window.addEventListener("resize", refreshMapLayout, { passive: true });
   window.addEventListener("orientationchange", () => setTimeout(refreshMapLayout, 250), { passive: true });
@@ -490,6 +474,12 @@
   window.visualViewport?.addEventListener("scroll", refreshMapLayout, { passive: true });
   setTimeout(refreshMapLayout, 100);
   setTimeout(refreshMapLayout, 1000);
+  document.body.classList.add("navigation-mode");
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission !== "function") {
+    window.addEventListener("deviceorientation", onOrientation, { passive: true });
+    orientationListening = true;
+  }
+  startTracking();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
   function setTestNavigation(heading, enabled = true) {
     deviceHeading = normalizeHeading(heading);

@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LA Race Route">
@@ -18,14 +19,7 @@
 <body>
   <main id="app">
     <div id="map" aria-label="Nike After Dark Los Angeles course map"></div>
-    <section id="guidance" class="guidance-card" hidden aria-live="assertive">
-      <div id="guidance-arrow" class="guidance-arrow" aria-hidden="true">↑</div>
-      <div class="guidance-copy">
-        <strong id="guidance-title">Continue straight</strong>
-        <span id="guidance-detail">Waiting for location</span>
-      </div>
-      <button id="recenter" class="icon-button" type="button" title="Center and rotate with my direction" aria-label="Center and rotate with my direction" disabled>◎</button>
-    </section>
+
     <section id="stats" class="stats-card" aria-live="polite">
       <div class="info-header">
         <h1>Nike LA · Live course</h1>
@@ -33,37 +27,38 @@
           <span id="help-label">More info</span><span id="help-symbol" aria-hidden="true">＋</span>
         </button>
       </div>
-      <div class="stat"><span class="stat-label">COURSE</span><strong id="course-status">Ready</strong></div>
+      <div class="stat"><span class="stat-label">COURSE</span><strong id="course-status">Locating</strong></div>
       <div class="stat"><span class="stat-label">MILE</span><strong id="mile-progress">—</strong></div>
       <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
-      <div class="stat"><span class="stat-label">OFF ROUTE</span><strong id="off-route">—</strong></div>
-      <div class="accuracy" id="accuracy">Nike’s exact 834-point course · location stays on this phone</div>
+      <div class="stat"><span class="stat-label">FROM ROUTE</span><strong id="off-route">—</strong></div>
+      <div class="accuracy" id="accuracy">Starting precise GPS · location stays on this phone</div>
     </section>
 
-    <section id="direction" class="direction-card" hidden aria-live="polite">
+    <section id="direction" class="navigation-card" aria-live="polite" aria-atomic="true">
       <div id="turn-arrow" class="turn-arrow" aria-hidden="true">↑</div>
       <div class="direction-copy">
-        <span id="direction-label">Point your phone forward</span>
-        <strong id="direction-detail">Waiting for heading</strong>
+        <span id="direction-label">Waiting for location</span>
+        <strong id="direction-detail">Live tracking starts automatically</strong>
       </div>
-      <div id="heading-source" class="heading-source">COMPASS</div>
+      <div id="heading-source" class="heading-source">HEADING</div>
     </section>
 
-    <section class="actions-card">
-      <button id="track" class="primary-button" type="button">Start live tracking</button>
-      <button id="navigate" class="secondary-button" type="button">Heading</button>
-      <button id="overview" class="secondary-button" type="button" aria-label="Show full route">Full route</button>
+    <button id="recenter" class="recenter-button" type="button" title="Center on my location" aria-label="Center on my location" disabled>◎</button>
+
+    <section class="actions-card" aria-label="Map controls">
+      <button id="navigate" class="secondary-button active" type="button" aria-pressed="true" aria-label="Heading-up navigation on">Heading on</button>
+      <button id="overview" class="secondary-button" type="button" aria-pressed="false" aria-label="Show full route">Full route</button>
     </section>
 
     <section id="help" class="help-card" hidden>
       <div id="help-body">
         <strong class="help-heading">Before your run</strong>
         <ol>
-          <li>Tap <b>Start live tracking</b> and allow precise location.</li>
+          <li>Live tracking starts automatically. Allow precise location when Safari asks.</li>
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
-          <li>The blue dot is you. The card shows course progress and how far you are from the race line.</li>
-          <li>Tap <b>Heading</b> to rotate the street map and route in your running direction. GPS movement leads while you run; the phone compass fills in when you slow down.</li>
-          <li>The top banner shows the next course turn and updates as you move. Direct cues pause if you are more than about 330 ft from the course; use Full route to choose a safe way back.</li>
+          <li>The blue dot is you. Nike LA course information stays at the top.</li>
+          <li>The bottom navigation card combines your next course turn and live heading direction.</li>
+          <li><b>Heading on</b> rotates the map in your running direction. Toggle it off for a north-up map, or use <b>Full route</b> for the complete course.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
         <p><a href="https://www.afterdarktour.nike.com/en/la" target="_blank" rel="noopener">Official Nike race page ↗</a></p>
@@ -74,6 +69,6 @@
   </main>
   <script src="leaflet.js?v=1.9.4"></script>
   <script src="route-data.js?v=2"></script>
-  <script src="app.js?v=8"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
