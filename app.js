@@ -2,6 +2,7 @@
 (() => {
   "use strict";
   const route = window.NIKE_ROUTE;
+  const { createAngleSmoother } = window.HeadingSmoothing;
   const points = route.points.map(([lon, lat]) => ({ lon, lat }));
   const R = 6371008.8;
   const toRad = value => value * Math.PI / 180;
@@ -150,6 +151,8 @@
   const els = Object.fromEntries(["navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
   let watchId = null, userMarker = null, accuracyCircle = null, nearestMarker = null, following = true, wakeLock = null;
   let navigationMode = true, fullRouteMode = false, orientationListening = false, deviceHeading = null, compassValue = null, mapRotation = 0, headingSource = "", lastCompassAt = 0, lastGpsHeadingAt = 0, currentSpeed = 0, currentFix = null, currentNearest = null;
+  let rotationFrame = null, lastRotationFrameAt = null;
+  const mapAngleSmoother = createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 });
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
@@ -240,12 +243,25 @@
     if (currentNearest.along >= totalMeters - 15) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
     return { ...pointAtCourse(currentNearest.along + 50), rejoin: false, distance: 50 };
   }
-  function rotateMap() {
-    const heading = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading) ? deviceHeading : 0;
-    const desiredRotation = -heading;
-    mapRotation += signedHeading(desiredRotation - mapRotation);
+  function drawMapRotation(timestamp) {
+    const elapsed = lastRotationFrameAt === null ? 16 : Math.min(64, timestamp - lastRotationFrameAt);
+    lastRotationFrameAt = timestamp;
+    mapRotation = mapAngleSmoother.step(elapsed);
     headingPane.style.rotate = `${mapRotation}deg`;
     document.getElementById("map").style.setProperty("--map-heading", `${-mapRotation}deg`);
+    if (!mapAngleSmoother.isSettled()) {
+      rotationFrame = requestAnimationFrame(drawMapRotation);
+    } else {
+      rotationFrame = null;
+      lastRotationFrameAt = null;
+    }
+  }
+  function rotateMap() {
+    const heading = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading) ? deviceHeading : 0;
+    mapAngleSmoother.setTarget(-heading);
+    if (rotationFrame === null && !mapAngleSmoother.isSettled()) {
+      rotationFrame = requestAnimationFrame(drawMapRotation);
+    }
   }
   function showDirection({ arrow = "↑", rotation = 0, label, detail, source } = {}) {
     els["turn-arrow"].textContent = arrow;
@@ -487,6 +503,6 @@
     applyNavigationMode(enabled);
     renderNavigation();
   }
-  function navigationState() { return { deviceHeading, mapRotation, headingSource, currentSpeed, navigationMode, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
+  function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
   window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
