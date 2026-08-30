@@ -10,14 +10,15 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=38')
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=40')
     assert 'styles.css?v=25' in HTML
-    for asset in ('styles.css?v=25', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=38'):
+    for asset in ('styles.css?v=25', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=40'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
     assert 'createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 })' in JS
     assert "requestAnimationFrame(drawMapRotation)" in JS
+    assert "Math.min(32, timestamp - lastRotationFrameAt)" in JS
     assert "transition:rotate" not in CSS
 
 
@@ -26,9 +27,12 @@ def test_map_rotation_origin_tracks_leaflet_pan_so_preview_stays_centered():
     assert "L.DomUtil.getPosition(mapPane)" in JS
     assert "map.getSize().divideBy(2).subtract(mapPanePosition)" in JS
     assert "headingPane.style.transformOrigin" in JS
-    assert 'map.on("move zoom resize", syncMapRotationOrigin)' in JS
+    assert 'map.on("resize", syncMapRotationOrigin)' in JS
+    assert 'map.on("move zoom resize", syncMapRotationOrigin)' not in JS
     rotation = JS[JS.index("function drawMapRotation"):JS.index("function rotateMap")]
-    assert rotation.index("syncMapRotationOrigin()") < rotation.index("headingPane.style.rotate")
+    assert "syncMapRotationOrigin()" not in rotation
+    preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
+    assert preview.index("map.setView(displayedPoint") < preview.index("syncMapRotationOrigin()") < preview.index("rotateMap()")
 
 
 def test_tracking_starts_automatically_without_manual_button():

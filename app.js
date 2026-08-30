@@ -236,7 +236,7 @@
     const viewportCenter = map.getSize().divideBy(2).subtract(mapPanePosition);
     headingPane.style.transformOrigin = `${viewportCenter.x}px ${viewportCenter.y}px`;
   }
-  map.on("move zoom resize", syncMapRotationOrigin);
+  map.on("resize", syncMapRotationOrigin);
   syncMapRotationOrigin();
 
   const elementIds = [
@@ -387,10 +387,9 @@
     return { ...pointAtCourse(currentNearest.along + GUIDANCE_LOOKAHEAD_METERS), rejoin: false, distance: GUIDANCE_LOOKAHEAD_METERS };
   }
   function drawMapRotation(timestamp) {
-    const elapsed = lastRotationFrameAt === null ? 16 : Math.min(64, timestamp - lastRotationFrameAt);
+    const elapsed = lastRotationFrameAt === null ? 16 : Math.min(32, timestamp - lastRotationFrameAt);
     lastRotationFrameAt = timestamp;
     mapRotation = mapAngleSmoother.step(elapsed);
-    syncMapRotationOrigin();
     headingPane.style.rotate = `${mapRotation}deg`;
     document.getElementById("map").style.setProperty("--map-heading", `${-mapRotation}deg`);
     if (!mapAngleSmoother.isSettled()) {
@@ -421,7 +420,6 @@
     lastRotationFrameAt = null;
     mapRotation = rotation;
     mapAngleSmoother.reset(rotation);
-    syncMapRotationOrigin();
     headingPane.style.rotate = `${rotation}deg`;
     document.getElementById("map").style.setProperty("--map-heading", `${-rotation}deg`);
   }
@@ -569,7 +567,10 @@
       const viewCenter = navigationMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       const centerLatLng = [viewCenter.lat, viewCenter.lon];
       const center = map.getCenter();
-      if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) map.setView(centerLatLng, targetZoom, { animate: false });
+      if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) {
+        map.setView(centerLatLng, targetZoom, { animate: false });
+        syncMapRotationOrigin();
+      }
     }
     refreshRouteChevrons();
     renderNavigation();
@@ -659,6 +660,7 @@
     streetTiles.off("load", previewTilesReady);
     streetTiles.once("load", previewTilesReady);
     map.setView(displayedPoint, previewZoom, { animate: false });
+    syncMapRotationOrigin();
     rotateMap();
     els.distance.textContent = summaryMiles(target);
     els.remaining.textContent = summaryMiles(totalMeters - target);
@@ -683,7 +685,11 @@
       const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], previewSavedView?.zoom ?? map.getZoom(), { animate: false });
-    } else if (previewSavedView) map.setView(previewSavedView.center, previewSavedView.zoom, { animate: false });
+      syncMapRotationOrigin();
+    } else if (previewSavedView) {
+      map.setView(previewSavedView.center, previewSavedView.zoom, { animate: false });
+      syncMapRotationOrigin();
+    }
     if (previewMapRotation !== null) setMapRotationImmediately(previewMapRotation);
     streetTiles.off("load", previewTilesReady);
     previewTileAlong = null;
@@ -747,6 +753,7 @@
       const useHeadingOffset = enabled && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], enabled ? 17 : 16, { animate: false });
+      syncMapRotationOrigin();
     }
     if (!preserveRotation) renderNavigation();
   }
@@ -784,6 +791,7 @@
       const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], navigationMode ? 17 : 16, { animate: false });
+      syncMapRotationOrigin();
     }
     renderNavigation();
   }
@@ -796,6 +804,7 @@
     setMapRotationImmediately(0);
     map.invalidateSize({ pan: false, animate: false });
     map.fitBounds(routeBounds, { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
+    syncMapRotationOrigin();
     renderNavigation();
   }
   els["route-control"].addEventListener("click", () => {
