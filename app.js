@@ -1,4 +1,3 @@
-
 (() => {
   "use strict";
   const route = window.NIKE_ROUTE;
@@ -15,7 +14,10 @@
   const cumulative = [0];
   for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1] + segmentMeters(points[i - 1], points[i]));
   const totalMeters = cumulative.at(-1);
+  const REJOIN_GUIDANCE_MIN_METERS = 30;
   const MAX_REJOIN_GUIDANCE_METERS = 100;
+  const FINISH_REACHED_METERS = 15;
+  const GUIDANCE_LOOKAHEAD_METERS = 50;
 
   function courseCandidates(lat, lon) {
     const cos = Math.cos(toRad(lat));
@@ -148,9 +150,30 @@
     if (pane) headingPane.appendChild(pane);
   });
 
-  const els = Object.fromEntries(["navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy", "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help", "help-toggle", "help-body"].map(id => [id, document.getElementById(id)]));
-  let watchId = null, userMarker = null, accuracyCircle = null, nearestMarker = null, following = true, wakeLock = null;
-  let navigationMode = true, fullRouteMode = false, orientationListening = false, deviceHeading = null, compassValue = null, mapRotation = 0, headingSource = "", lastCompassAt = 0, lastGpsHeadingAt = 0, currentSpeed = 0, currentFix = null, currentNearest = null;
+  const elementIds = [
+    "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy",
+    "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
+    "help-toggle", "help-body",
+  ];
+  const els = Object.fromEntries(elementIds.map(id => [id, document.getElementById(id)]));
+  let watchId = null;
+  let userMarker = null;
+  let accuracyCircle = null;
+  let nearestMarker = null;
+  let following = true;
+  let wakeLock = null;
+  let navigationMode = true;
+  let fullRouteMode = false;
+  let orientationListening = false;
+  let deviceHeading = null;
+  let compassValue = null;
+  let mapRotation = 0;
+  let headingSource = "";
+  let lastCompassAt = 0;
+  let lastGpsHeadingAt = 0;
+  let currentSpeed = 0;
+  let currentFix = null;
+  let currentNearest = null;
   let rotationFrame = null, lastRotationFrameAt = null;
   const mapAngleSmoother = createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 });
   let gpsHistory = [];
@@ -239,9 +262,9 @@
   function navigationTarget() {
     if (!currentFix || !currentNearest) return null;
     if (currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) return { paused: true, distance: currentNearest.distance };
-    if (currentNearest.distance > 30) return { lat: currentNearest.lat, lon: currentNearest.lon, rejoin: true, distance: currentNearest.distance };
-    if (currentNearest.along >= totalMeters - 15) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
-    return { ...pointAtCourse(currentNearest.along + 50), rejoin: false, distance: 50 };
+    if (currentNearest.distance > REJOIN_GUIDANCE_MIN_METERS) return { lat: currentNearest.lat, lon: currentNearest.lon, rejoin: true, distance: currentNearest.distance };
+    if (currentNearest.along >= totalMeters - FINISH_REACHED_METERS) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
+    return { ...pointAtCourse(currentNearest.along + GUIDANCE_LOOKAHEAD_METERS), rejoin: false, distance: GUIDANCE_LOOKAHEAD_METERS };
   }
   function drawMapRotation(timestamp) {
     const elapsed = lastRotationFrameAt === null ? 16 : Math.min(64, timestamp - lastRotationFrameAt);
@@ -263,9 +286,8 @@
       rotationFrame = requestAnimationFrame(drawMapRotation);
     }
   }
-  function showDirection({ arrow = "↑", rotation = 0, label, detail, source } = {}) {
+  function showDirection({ arrow = "↑", label, detail, source } = {}) {
     els["turn-arrow"].textContent = arrow;
-    els["turn-arrow"].style.transform = `rotate(${rotation}deg)`;
     els["direction-label"].textContent = label;
     els["direction-detail"].textContent = detail;
     els["heading-source"].textContent = source || (navigationMode ? headingSource || "HEADING" : "NORTH UP");

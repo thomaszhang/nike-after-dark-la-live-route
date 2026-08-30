@@ -9,11 +9,11 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=11')
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=12')
     assert 'styles.css?v=11' in HTML
-    for asset in ('styles.css?v=11', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=11'):
+    for asset in ('styles.css?v=11', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=12'):
         assert f'"{asset}"' in SW
-    assert 'e.request.mode==="navigate"' in SW
+    assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
     assert 'createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 })' in JS
     assert "requestAnimationFrame(drawMapRotation)" in JS

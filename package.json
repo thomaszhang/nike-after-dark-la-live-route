@@ -1,0 +1,14 @@
+{
+  "name": "nike-after-dark-la-live-course",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static live-course tracker for the Nike After Dark Tour Los Angeles route.",
+  "scripts": {
+    "serve": "python3 -m http.server 8765 --bind 127.0.0.1",
+    "test": "node --test tests/*.js && python3 -m pytest -q",
+    "check": "node --check app.js && node --check heading-smoothing.js && node --check sw.js && npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
