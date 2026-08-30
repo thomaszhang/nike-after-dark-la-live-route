@@ -8,7 +8,7 @@ This is a static progressive web app: there is no application server, account, o
 
 - Starts precise GPS tracking automatically after location permission is granted.
 - Matches each location fix to the most plausible point on the course, including crossings and nearby parallel segments.
-- Shows current mile progress, distance remaining, GPS accuracy, and distance from the route.
+- Shows completed distance, distance remaining, course status, and GPS accuracy in a four-column summary.
 - Rotates only the visual map panes for heading-up navigation, so touch dragging stays aligned with the screen.
 - Smooths compass changes with a 1.5° dead zone and 220 ms response curve.
 - Detects upcoming course turns from the route geometry.
@@ -26,7 +26,7 @@ The bottom navigation card changes with distance from the route:
 | More than 30 m through 100 m | Direction and distance back to the nearest course point |
 | More than 100 m (about 328 ft) | Navigation card hidden; the top status still reports that the runner is off course |
 
-The card returns automatically after the location is again within 100 m of the course. `Full route`, `Heading`, and recenter remain available while the card is hidden.
+The card returns automatically after the location is again within 100 m of the course. Route, Center, and Direction remain available while the card is hidden.
 
 These cues are a convenience, not authoritative race-day directions. Follow event staff, signs, closures, and official course updates.
 
@@ -55,15 +55,16 @@ python3 -m http.server 8765 --bind 127.0.0.1
 
 1. Open the HTTPS deployment in Safari.
 2. Allow precise location when prompted.
-3. Tap **Heading on** if Safari asks separately for motion/orientation access.
+3. Tap **Direction** if Safari asks separately for motion/orientation access.
 4. Optionally choose **Share → Add to Home Screen**.
 5. Keep the page visible during the run. iOS may pause browser location updates after the screen locks, even though the app requests a screen wake lock where supported.
 
 Controls:
 
-- **Heading on/off** switches between heading-up and north-up maps.
-- **Full route** fits the complete course; **Live map** returns to the current position.
-- **◎** recenters the map after manual dragging.
+- **Route** fits and centers the complete course.
+- **Center** returns the map to the current location after Route or manual dragging.
+- **Direction** switches heading-up rotation on or off and starts enabled.
+- Green dots show which controls are active.
 - **More info** opens the in-app usage notes and official race link.
 
 ## Privacy and network use

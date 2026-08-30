@@ -9,9 +9,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=12')
-    assert 'styles.css?v=11' in HTML
-    for asset in ('styles.css?v=11', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=12'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=16')
+    assert 'styles.css?v=16' in HTML
+    for asset in ('styles.css?v=16', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=16'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -27,8 +27,8 @@ def test_tracking_starts_automatically_without_manual_button():
 
 
 def test_heading_starts_enabled_and_remains_a_toggle():
-    assert 'id="navigate"' in HTML
-    assert 'aria-pressed="true"' in HTML
+    assert 'id="direction-toggle"' in HTML
+    assert re.search(r'id="direction-toggle"[^>]*aria-pressed="true"', HTML)
     assert re.search(r"let navigationMode = true\b", JS)
     assert "toggleNavigation" in JS
 
@@ -48,11 +48,33 @@ def test_navigation_is_one_bottom_interface():
     assert "MAX_REJOIN_GUIDANCE_METERS = 100" in JS
 
 
-def test_course_information_stays_at_top_and_center_is_bottom_right():
+def test_course_information_uses_requested_title_and_four_columns():
     assert re.search(r"\.stats-card\s*\{[^}]*top:var\(--safe-top\)", CSS, re.DOTALL)
-    assert 'id="recenter"' in HTML
-    assert re.search(r"\.recenter-button\s*\{[^}]*right:", CSS, re.DOTALL)
-    assert re.search(r"\.recenter-button\s*\{[^}]*bottom:", CSS, re.DOTALL)
+    assert "Nike: After Dark Half Marathon Course (2026)" in HTML
+    for label in ("DISTANCE", "REMAINING", "STATUS", "ACCURACY"):
+        assert f'>{label}<' in HTML
+    for element_id in ("distance", "remaining", "course-status", "accuracy"):
+        assert f'id="{element_id}"' in HTML
+    for old_label in ("COURSE", "MILE", "FROM ROUTE"):
+        assert f'>{old_label}<' not in HTML
+    assert "progress follows nearest point on course" not in HTML
+    assert "progress follows nearest point on course" not in JS
+
+
+def test_bottom_bar_has_route_center_and_direction_with_enabled_dots():
+    assert 'class="actions-card" aria-label="Map controls"' in HTML
+    assert HTML.count('class="control-button') == 3
+    assert re.search(r'id="route-control"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Route', HTML)
+    assert re.search(r'id="center-control"[^>]*aria-pressed="true"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Center', HTML)
+    assert re.search(r'id="direction-toggle"[^>]*aria-pressed="true"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Direction', HTML)
+    assert 'id="recenter"' not in HTML
+    assert "recenter-button" not in CSS
+    assert "grid-template-columns:repeat(3,1fr)" in CSS
+    assert re.search(r"\.control-button\.active\s+\.enabled-dot\s*\{[^}]*background:var\(--enabled\)", CSS, re.DOTALL)
+    assert 'id="navigate"' not in HTML
+    assert 'id="overview"' not in HTML
+    assert "Heading on" not in HTML
+    assert "Full route" not in HTML
 
 
 def test_heading_does_not_rotate_leaflet_input_container():
@@ -63,8 +85,8 @@ def test_heading_does_not_rotate_leaflet_input_container():
     assert "height:100dvh" in CSS
 
 
-def test_recenter_does_not_change_heading_preference():
-    handler = re.search(r'els\.recenter\.addEventListener\("click",\s*(\w+)\)', JS)
+def test_center_does_not_change_heading_preference():
+    handler = re.search(r'els\["center-control"\]\.addEventListener\("click",\s*(\w+)\)', JS)
     assert handler
     function_start = JS.index(f"function {handler.group(1)}()")
     function_end = JS.index("\n  }", function_start)

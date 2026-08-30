@@ -69,7 +69,7 @@ Distance from course controls which guidance is allowed:
 - more than 30 m through 100 m: direction to the nearest course point;
 - more than 100 m: no bottom navigation card.
 
-The 100 m rule prevents a direct bearing to a distant course point from being presented as a valid street-level route. The top card still reports `Off course` and the distance from the route, while Full route and recenter remain usable. GPS updates automatically restore the navigation card after returning within range.
+The 100 m rule prevents a direct bearing to a distant course point from being presented as a valid street-level route. The top card still reports `Off course`, while Route, Center, and Direction remain usable. GPS updates automatically restore the navigation card after returning within range.
 
 These thresholds are product behavior and safety behavior. Change them only with corresponding tests, documentation, and real-location or browser verification.
 
@@ -77,7 +77,7 @@ These thresholds are product behavior and safety behavior. Change them only with
 
 The application follows `prefers-color-scheme`. OpenStreetMap provides the map tiles; dark appearance is applied locally to the map presentation rather than switching to a credentialed tile provider.
 
-Heading-up mode leads the map center approximately 70 m in front of the current position. Full-route mode disables following until the user chooses Live map, recenter, or Heading on.
+The bottom bar separates view and heading state. Route fits the complete course, Center returns to the live location, and Direction independently toggles heading-up rotation. Green dots indicate active controls; Center and Direction start active. Heading-up mode leads the map center approximately 70 m in front of the current position. Route mode disables following until the user chooses Center.
 
 ## Offline and cache updates
 

@@ -151,7 +151,7 @@
   });
 
   const elementIds = [
-    "navigate", "recenter", "overview", "course-status", "mile-progress", "remaining", "off-route", "accuracy",
+    "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "accuracy",
     "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
     "help-toggle", "help-body",
   ];
@@ -179,6 +179,7 @@
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
   const feet = meters => meters * 3.28084;
+  const summaryMiles = meters => `${miles(meters).toFixed(1).replace(/\.0$/, "")} miles`;
 
   function statusClass(element, name) { element.className = name || ""; }
   function smoothHeading(previous, next, amount = .65) {
@@ -366,13 +367,12 @@
     }
     const progress = Math.min(totalMeters, nearest.along), remaining = Math.max(0, totalMeters - progress);
     const offFeet = feet(nearest.distance);
-    els["mile-progress"].textContent = miles(progress).toFixed(2);
-    els.remaining.textContent = miles(remaining).toFixed(2) + " mi";
-    els["off-route"].textContent = offFeet < 1000 ? Math.round(offFeet) + " ft" : (offFeet / 5280).toFixed(2) + " mi";
-    if (offFeet <= 100) { els["course-status"].textContent = "On course"; statusClass(els["course-status"], "good"); statusClass(els["off-route"], "good"); }
-    else if (offFeet <= 300) { els["course-status"].textContent = "Nearby"; statusClass(els["course-status"], "warn"); statusClass(els["off-route"], "warn"); }
-    else { els["course-status"].textContent = "Off course"; statusClass(els["course-status"], "bad"); statusClass(els["off-route"], "bad"); }
-    els.accuracy.textContent = `GPS accuracy ±${Math.round(feet(accuracy))} ft · progress follows nearest point on course`;
+    els.distance.textContent = summaryMiles(progress);
+    els.remaining.textContent = summaryMiles(remaining);
+    if (offFeet <= 100) { els["course-status"].textContent = "On course"; statusClass(els["course-status"], "good"); }
+    else if (offFeet <= 300) { els["course-status"].textContent = "Nearby"; statusClass(els["course-status"], "warn"); }
+    else { els["course-status"].textContent = "Off course"; statusClass(els["course-status"], "bad"); }
+    els.accuracy.textContent = `±${Math.round(feet(accuracy))} feet`;
     els["location-error"].hidden = true;
     const ll = [lat, lon];
     if (!userMarker) {
@@ -389,7 +389,6 @@
       const center = map.getCenter();
       if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) map.setView(centerLatLng, targetZoom, { animate: false });
     }
-    els.recenter.disabled = false;
     renderNavigation();
   }
 
@@ -416,32 +415,24 @@
   }
   function setFullRouteMode(enabled) {
     fullRouteMode = enabled;
-    els.overview.textContent = enabled ? "Live map" : "Full route";
-    els.overview.classList.toggle("active", enabled);
-    els.overview.setAttribute("aria-pressed", String(enabled));
-    els.overview.setAttribute("aria-label", enabled ? "Return to live heading-up map" : "Show full route");
+    els["route-control"].classList.toggle("active", enabled);
+    els["route-control"].setAttribute("aria-pressed", String(enabled));
+    els["center-control"].classList.toggle("active", !enabled && following);
+    els["center-control"].setAttribute("aria-pressed", String(!enabled && following));
   }
   function applyNavigationMode(enabled) {
     navigationMode = enabled;
-    els.navigate.classList.toggle("active", enabled);
-    els.navigate.textContent = enabled ? "Heading on" : "Heading off";
-    els.navigate.setAttribute("aria-pressed", String(enabled));
-    els.navigate.setAttribute("aria-label", enabled ? "Heading-up navigation on" : "Enable heading-up navigation");
+    els["direction-toggle"].classList.toggle("active", enabled);
+    els["direction-toggle"].setAttribute("aria-pressed", String(enabled));
+    els["direction-toggle"].setAttribute("aria-label", enabled ? "Direction heading enabled" : "Direction heading disabled");
     document.body.classList.toggle("navigation-mode", enabled);
     map.invalidateSize({ pan: false, animate: false });
-    if (enabled) {
-      setFullRouteMode(false);
-      following = true;
-      if (currentFix) {
-        const viewCenter = Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
-        map.setView([viewCenter.lat, viewCenter.lon], Math.max(17, map.getZoom()), { animate: false });
-      }
-      renderNavigation();
-    } else {
-      rotateMap();
-      map.invalidateSize({ pan: false, animate: false });
-      if (currentFix) map.setView([currentFix.lat, currentFix.lon], Math.max(16, map.getZoom()), { animate: false });
+    if (currentFix && following && !fullRouteMode) {
+      const useHeadingOffset = enabled && Number.isFinite(deviceHeading);
+      const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
+      map.setView([viewCenter.lat, viewCenter.lon], enabled ? 17 : 16, { animate: false });
     }
+    renderNavigation();
   }
   async function toggleNavigation() {
     if (navigationMode) {
@@ -467,10 +458,10 @@
       els["heading-source"].textContent = "GPS";
     }
   }
-  els.navigate.addEventListener("click", toggleNavigation);
+  els["direction-toggle"].addEventListener("click", toggleNavigation);
   function centerLiveMap() {
-    setFullRouteMode(false);
     following = true;
+    setFullRouteMode(false);
     if (currentFix) {
       const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
@@ -478,18 +469,17 @@
     }
     renderNavigation();
   }
-  els.recenter.addEventListener("click", centerLiveMap);
-  els.overview.addEventListener("click", () => {
-    if (fullRouteMode) {
-      centerLiveMap();
-      return;
-    }
+  els["center-control"].addEventListener("click", centerLiveMap);
+  els["route-control"].addEventListener("click", () => {
     setFullRouteMode(true);
     following = false;
     rotateMap();
     map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
   });
-  map.on("dragstart", () => { following = false; });
+  map.on("dragstart", () => {
+    following = false;
+    setFullRouteMode(false);
+  });
   els["help-toggle"].addEventListener("click", () => {
     const open = els.help.hidden;
     els.help.hidden = !open;
@@ -523,6 +513,7 @@
     applyNavigationMode(enabled);
     renderNavigation();
   }
-  function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
-  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
+  function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode, fullRouteMode, following, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
+  const triggerMapDragStart = () => map.fire("dragstart");
+  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, triggerMapDragStart, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
