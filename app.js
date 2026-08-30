@@ -261,6 +261,7 @@
   let previewMarker = null;
   let previewSavedView = null;
   let previewMapRotation = null;
+  let previewSavedControls = null;
   let previewTileAlong = null;
   let previewDistance = null;
   let rotationFrame = null, lastRotationFrameAt = null;
@@ -392,7 +393,7 @@
   }
   function rotateMap() {
     const targetRotation = previewDistance !== null
-      ? 0
+      ? navigationMode ? -courseBearing(previewDistance) : 0
       : navigationMode && !fullRouteMode && Number.isFinite(deviceHeading)
       ? -deviceHeading
       : manualMapRotation ?? 0;
@@ -627,16 +628,18 @@
   }
   function previewCourseAt(along) {
     const target = Math.max(0, Math.min(totalMeters, along));
+    const previewBearing = courseBearing(target);
     if (previewDistance === null) {
       previewSavedView = { center: map.getCenter(), zoom: map.getZoom() };
       previewMapRotation = mapAngleSmoother.getTarget();
-      setMapRotationImmediately(0);
+      previewSavedControls = { following, fullRouteMode };
+      setPreviewRouteSelection(true);
     }
     previewDistance = target;
+    setMapRotationImmediately(navigationMode ? -previewBearing : 0);
     const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
     const previewZoom = Math.max(map.getZoom(), 16);
     const displayedPoint = displayedRoutePoint(target, previewZoom);
-    const previewBearing = courseBearing(target);
     if (!previewMarker) previewMarker = L.marker(displayedPoint, { icon: previewDirectionIcon(previewBearing), interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
     else previewMarker.setLatLng(displayedPoint).setIcon(previewDirectionIcon(previewBearing));
     map.invalidateSize({ pan: false, animate: false });
@@ -657,6 +660,10 @@
     if (previewDistance === null) return;
     previewDistance = null;
     if (previewMarker) { map.removeLayer(previewMarker); previewMarker = null; }
+    if (previewSavedControls) {
+      following = previewSavedControls.following;
+      setFullRouteMode(previewSavedControls.fullRouteMode);
+    }
     if (following && currentFix && !fullRouteMode) {
       const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
@@ -667,6 +674,7 @@
     previewTileAlong = null;
     previewSavedView = null;
     previewMapRotation = null;
+    previewSavedControls = null;
     renderLiveSummary();
   }
 
@@ -702,6 +710,14 @@
     els["route-control"].setAttribute("aria-pressed", String(enabled));
     els["center-control"].classList.toggle("active", !enabled && following);
     els["center-control"].setAttribute("aria-pressed", String(!enabled && following));
+  }
+  function setPreviewRouteSelection(enabled) {
+    const routeSelected = enabled || fullRouteMode;
+    const locationSelected = !enabled && !fullRouteMode && following;
+    els["route-control"].classList.toggle("active", routeSelected);
+    els["route-control"].setAttribute("aria-pressed", String(routeSelected));
+    els["center-control"].classList.toggle("active", locationSelected);
+    els["center-control"].setAttribute("aria-pressed", String(locationSelected));
   }
   function applyNavigationMode(enabled, { preserveRotation = false } = {}) {
     navigationMode = enabled;
@@ -757,8 +773,9 @@
   }
   els["center-control"].addEventListener("click", centerLiveMap);
   els["route-control"].addEventListener("click", () => {
+    const selectingRouteFromLocation = following && !fullRouteMode;
     manualMapRotation = null;
-    applyNavigationMode(false);
+    if (selectingRouteFromLocation) applyNavigationMode(false);
     setFullRouteMode(true);
     following = false;
     rotateMap();

@@ -10,9 +10,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=33')
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=34')
     assert 'styles.css?v=24' in HTML
-    for asset in ('styles.css?v=24', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=33'):
+    for asset in ('styles.css?v=24', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=34'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -136,9 +136,12 @@ def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
     assert "route-direction-arrow" not in CSS
 
 
-def test_route_disables_direction_and_two_pointer_rotation_is_supported():
+def test_explicit_location_to_route_selection_disables_direction_and_two_pointer_rotation_is_supported():
     route_handler = JS[JS.index('els["route-control"].addEventListener'):]
     route_handler = route_handler[:route_handler.index("\n  });")]
+    assert "selectingRouteFromLocation" in route_handler
+    assert "following && !fullRouteMode" in route_handler
+    assert "if (selectingRouteFromLocation) applyNavigationMode(false)" in route_handler
     assert "applyNavigationMode(false)" in route_handler
     assert "manualMapRotation" in JS
     assert "activeMapPointers" in JS
@@ -194,15 +197,27 @@ def test_elevation_progress_dot_remains_round_when_chart_stretches():
     assert 'els["elevation-progress"].style.top = `${chartY}px`' in JS
 
 
-def test_profile_preview_centers_north_up_and_waits_for_tiles():
+def test_profile_preview_follows_course_when_direction_is_on_and_waits_for_tiles():
     preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
     assert "previewMapRotation" in JS
     assert "previewMapRotation = mapAngleSmoother.getTarget()" in preview
-    assert "setMapRotationImmediately(0)" in preview
-    assert "previewDistance !== null" in JS[JS.index("function rotateMap"):JS.index("const pointerAngle")]
+    assert "previewBearing = courseBearing(target)" in preview
+    assert "setMapRotationImmediately(navigationMode ? -previewBearing : 0)" in preview
     assert "map.setView(displayedPoint" in preview
     assert 'streetTiles.once("load"' in preview
     assert "map.invalidateSize" in preview
+
+
+def test_profile_preview_temporarily_selects_route_without_disabling_direction():
+    preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
+    end_preview = JS[JS.index("function endCoursePreview"):JS.index("function previewFromPointer")]
+    assert "previewSavedControls" in JS
+    assert "previewSavedControls = { following, fullRouteMode }" in preview
+    assert "setPreviewRouteSelection(true)" in preview
+    assert "applyNavigationMode(false)" not in preview
+    assert "following = previewSavedControls.following" in end_preview
+    assert "setFullRouteMode(previewSavedControls.fullRouteMode)" in end_preview
+    assert "previewSavedControls = null" in end_preview
 
 
 def test_preview_marker_follows_displayed_pass_and_shows_forward_direction():
