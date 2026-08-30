@@ -9,9 +9,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=18')
-    assert 'styles.css?v=18' in HTML
-    for asset in ('styles.css?v=18', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=18'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=27')
+    assert 'styles.css?v=21' in HTML
+    for asset in ('styles.css?v=21', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=27'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -51,21 +51,24 @@ def test_navigation_is_one_bottom_interface():
 def test_course_information_uses_requested_title_and_four_columns():
     assert re.search(r"\.stats-card\s*\{[^}]*top:var\(--safe-top\)", CSS, re.DOTALL)
     assert "Nike: After Dark Half Marathon Course (2026)" in HTML
-    for label in ("DISTANCE", "REMAINING", "STATUS", "ACCURACY"):
+    for label in ("DISTANCE", "REMAINING", "ELEVATION", "STATUS"):
         assert f'>{label}<' in HTML
-    for element_id in ("distance", "remaining", "course-status", "accuracy"):
+    assert HTML.index(">DISTANCE<") < HTML.index(">REMAINING<") < HTML.index(">ELEVATION<") < HTML.index(">STATUS<")
+    for element_id in ("distance", "remaining", "live-elevation", "course-status"):
         assert f'id="{element_id}"' in HTML
+    assert '>ACCURACY<' not in HTML
     for old_label in ("COURSE", "MILE", "FROM ROUTE"):
         assert f'>{old_label}<' not in HTML
     assert "progress follows nearest point on course" not in HTML
     assert "progress follows nearest point on course" not in JS
 
 
-def test_bottom_bar_has_route_center_and_direction_with_enabled_dots():
+def test_bottom_bar_has_route_location_and_direction_with_enabled_dots():
     assert 'class="actions-card" aria-label="Map controls"' in HTML
     assert HTML.count('class="control-button') == 3
     assert re.search(r'id="route-control"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Route', HTML)
-    assert re.search(r'id="center-control"[^>]*aria-pressed="true"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Center', HTML)
+    assert re.search(r'id="center-control"[^>]*aria-pressed="true"[^>]*>[\s\S]*<span class="control-label">Location</span>[\s\S]*id="location-accuracy"', HTML)
+    assert re.search(r"\.control-detail\s*\{[^}]*color:var\(--muted\)[^}]*font-size:", CSS, re.DOTALL)
     assert re.search(r'id="direction-toggle"[^>]*aria-pressed="true"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Direction', HTML)
     assert 'id="recenter"' not in HTML
     assert "recenter-button" not in CSS
@@ -85,7 +88,7 @@ def test_heading_does_not_rotate_leaflet_input_container():
     assert "height:100dvh" in CSS
 
 
-def test_center_does_not_change_heading_preference():
+def test_location_does_not_change_heading_preference():
     handler = re.search(r'els\["center-control"\]\.addEventListener\("click",\s*(\w+)\)', JS)
     assert handler
     function_start = JS.index(f"function {handler.group(1)}()")
@@ -93,19 +96,40 @@ def test_center_does_not_change_heading_preference():
     assert "toggleNavigation" not in JS[function_start:function_end]
 
 
-def test_course_uses_transparent_nike_red_and_direction_arrows():
+def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
     assert 'color: "#e90000"' in JS
-    assert re.search(r'color: "#e90000"[^\n]*opacity: \.34', JS)
-    assert "route-direction-arrow" in JS
-    assert "routeArrowDistances" in JS
-    assert "updateRouteArrowVisibility" in JS
-    assert 'map.on("zoomend moveend", updateRouteArrowVisibility)' in JS
-    assert "position.distanceTo(other) < 22" in JS
-    assert "Math.cos(radians) * 11" in JS
-    assert "translateY(11px)" in JS
-    assert ">➤</span>" in JS
+    assert re.search(r'color: "#e90000"[^\n]*opacity: \.72', JS)
+    assert "route-inline-chevron" in JS
+    assert "metersPerPixel * 30" in JS
+    assert "iconAnchor: [7, 7]" in JS
+    assert "candidate.bearing - 90" in JS
+    assert "position.distanceTo(candidate.screen) < 24" in JS
+    assert "zIndexOffset: -1000" in JS
+    assert "oppositeBearing" in JS
     assert "bearingBetween(previous, next)" in JS
-    assert re.search(r"\.route-direction-arrow\s*\{[^}]*color:#e90000", CSS, re.DOTALL)
+    assert re.search(r"\.route-inline-chevron\s*\{[^}]*background:rgba\(255,255,255,\.96\)[^}]*clip-path:polygon", CSS, re.DOTALL)
+    assert "routeArrowMarkers" not in JS
+    assert "route-direction-arrow" not in CSS
+
+
+def test_route_disables_direction_and_two_pointer_rotation_is_supported():
+    route_handler = JS[JS.index('els["route-control"].addEventListener'):]
+    route_handler = route_handler[:route_handler.index("\n  });")]
+    assert "applyNavigationMode(false)" in route_handler
+    assert "manualMapRotation" in JS
+    assert "activeMapPointers" in JS
+    assert "pointerdown" in JS and "pointermove" in JS and "pointerup" in JS and "pointercancel" in JS
+    assert "pointerAngle" in JS
+    assert "applyNavigationMode(false, { preserveRotation: true })" in JS[JS.index("function beginManualRotation"):JS.index("function updateManualRotation")]
+    assert "headingPane.style.rotate" in JS
+
+
+def test_off_course_hides_course_values_but_keeps_preview_values():
+    assert "hasCourseProgress" in JS
+    assert 'els.distance.textContent = hasCourseProgress ? summaryMiles(liveSummary.progress) : "—"' in JS
+    assert 'els.remaining.textContent = hasCourseProgress ? summaryMiles(liveSummary.remaining) : "—"' in JS
+    assert 'els["live-elevation"].textContent = hasCourseProgress ? `${Math.round(feet(elevationMeters))} feet` : "—"' in JS
+    assert "previewCourseAt" in JS
 
 
 def test_elevation_profile_is_local_interactive_and_restores_live_state():

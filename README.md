@@ -26,9 +26,9 @@ The bottom navigation card changes with distance from the route:
 | --- | --- |
 | 0–30 m | Normal course and turn guidance |
 | More than 30 m through 100 m | Direction and distance back to the nearest course point |
-| More than 100 m (about 328 ft) | Navigation card hidden; the top status still reports that the runner is off course |
+| More than 100 m (about 328 ft) | Navigation card hidden; top status reports off course while Distance, Remaining, and Elevation show `—` |
 
-The card returns automatically after the location is again within 100 m of the course. Route, Center, and Direction remain available while the card is hidden.
+The card returns automatically after the location is again within 100 m of the course. Route, Location, and Direction remain available while the card is hidden.
 
 These cues are a convenience, not authoritative race-day directions. Follow event staff, signs, closures, and official course updates.
 
@@ -63,9 +63,10 @@ python3 -m http.server 8765 --bind 127.0.0.1
 
 Controls:
 
-- **Route** fits and centers the complete course.
-- **Center** returns the map to the current location after Route or manual dragging.
-- **Direction** switches heading-up rotation on or off and starts enabled.
+- **Route** fits and centers the complete course and turns Direction off.
+- **Location** returns the map to the current location after Route or manual dragging; its second line shows current GPS accuracy.
+- **Direction** switches heading-up rotation on or off and starts enabled. Turning it on exits Route view and resumes location following.
+- Rotate the map manually with two fingers. Manual rotation turns Direction off and preserves the chosen bearing.
 - Green dots show which controls are active.
 - **More info** opens the in-app usage notes and official race link.
 

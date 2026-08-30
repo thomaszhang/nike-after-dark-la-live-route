@@ -14,7 +14,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
   <main id="app">
@@ -33,12 +33,12 @@
           <path id="elevation-line" class="elevation-line"></path>
           <line id="elevation-cursor" class="elevation-cursor" x1="0" x2="0" y1="2" y2="28" hidden></line>
         </svg>
-        <span id="elevation-value" class="elevation-value">ELEVATION</span>
+        <span id="elevation-value" class="elevation-value">PROFILE</span>
       </div>
       <div class="stat"><span class="stat-label">DISTANCE</span><strong id="distance">—</strong></div>
       <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
+      <div class="stat"><span class="stat-label">ELEVATION</span><strong id="live-elevation">—</strong></div>
       <div class="stat"><span class="stat-label">STATUS</span><strong id="course-status">Locating</strong></div>
-      <div class="stat"><span class="stat-label">ACCURACY</span><strong id="accuracy">—</strong></div>
     </section>
 
     <section id="direction" class="navigation-card" aria-live="polite" aria-atomic="true">
@@ -55,7 +55,8 @@
         <span class="enabled-dot" aria-hidden="true"></span>Route
       </button>
       <button id="center-control" class="control-button active" type="button" aria-pressed="true" aria-label="Center map on my location">
-        <span class="enabled-dot" aria-hidden="true"></span>Center
+        <span class="enabled-dot" aria-hidden="true"></span>
+        <span class="control-copy"><span class="control-label">Location</span><small id="location-accuracy" class="control-detail">—</small></span>
       </button>
       <button id="direction-toggle" class="control-button active" type="button" aria-pressed="true" aria-label="Direction heading enabled">
         <span class="enabled-dot" aria-hidden="true"></span>Direction
@@ -68,9 +69,10 @@
         <ol>
           <li>Live tracking starts automatically. Allow precise location when Safari asks.</li>
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
-          <li>The blue dot is you. Distance, remaining distance, status, and accuracy stay at the top.</li>
+          <li>The blue dot is you. Distance, remaining distance, elevation, and status stay at the top.</li>
           <li>The bottom navigation card combines your next course turn and live heading direction.</li>
-          <li><b>Route</b> fits the course, <b>Center</b> returns to your location, and <b>Direction</b> toggles heading-up rotation.</li>
+          <li><b>Route</b> fits the course, <b>Location</b> returns to your position and shows GPS accuracy, and <b>Direction</b> toggles heading-up rotation.</li>
+          <li>Rotate the map manually with two fingers. Manual rotation turns Direction off.</li>
           <li>Slide across the elevation profile to preview distance and a point on the course. Release to return to live tracking.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
@@ -85,6 +87,6 @@
   <script src="route-data.js?v=2"></script>
   <script src="course-elevation.js?v=1"></script>
   <script src="heading-smoothing.js?v=1"></script>
-  <script src="app.js?v=18"></script>
+  <script src="app.js?v=27"></script>
 </body>
 </html>

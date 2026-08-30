@@ -132,52 +132,61 @@
     }
   });
   const routeLatLngs = points.map(p => [p.lat, p.lon]);
-  const courseRenderer = L.Browser.svg ? L.svg({ padding: .5 }) : L.canvas({ padding: .5 });
-  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 5, opacity: .16, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
-  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#e90000", weight: 3, opacity: .34, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
+  let currentFix = null;
+  const courseRenderer = L.svg({ padding: .5 });
+  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 7, opacity: .24, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
+  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#e90000", weight: 5, opacity: .72, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
   map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
+
+  const routeChevronLayer = L.layerGroup().addTo(map);
+  const oppositeBearing = (first, second) => Math.abs(signedHeading(first - second)) > 120;
+  function refreshRouteChevrons() {
+    routeChevronLayer.clearLayers();
+    const latitude = map.getCenter().lat * Math.PI / 180;
+    const metersPerPixel = 156543.03392 * Math.cos(latitude) / (2 ** map.getZoom());
+    const spacing = Math.max(20, Math.min(900, metersPerPixel * 30));
+    const tangentOffset = Math.max(5, Math.min(18, spacing * .2));
+    const visibleBounds = map.getBounds().pad(.3);
+    const candidates = [];
+    for (let along = spacing / 2; along < totalMeters; along += spacing) {
+      const point = pointAtCourse(along);
+      if (!visibleBounds.contains([point.lat, point.lon])) continue;
+      const previous = pointAtCourse(Math.max(0, along - tangentOffset));
+      const next = pointAtCourse(Math.min(totalMeters, along + tangentOffset));
+      candidates.push({ point, bearing: bearingBetween(previous, next), screen: map.latLngToContainerPoint([point.lat, point.lon]) });
+    }
+    const clusters = [];
+    candidates.forEach(candidate => {
+      const cluster = clusters.find(item => item[0].screen.distanceTo(candidate.screen) < 12);
+      if (cluster) cluster.push(candidate);
+      else clusters.push([candidate]);
+    });
+    const reserved = currentFix ? [map.latLngToContainerPoint([currentFix.lat, currentFix.lon])] : [];
+    const occupied = [];
+    clusters.forEach(cluster => {
+      const first = cluster[0];
+      const alternatives = cluster.filter(candidate => oppositeBearing(first.bearing, candidate.bearing));
+      const cell = Math.abs(Math.floor(first.screen.x / 28) * 31 + Math.floor(first.screen.y / 28) * 17);
+      const candidate = alternatives.length && cell % 2 ? alternatives[cell % alternatives.length] : first;
+      if (reserved.some(position => position.distanceTo(candidate.screen) < 24)) return;
+      if (occupied.some(position => position.distanceTo(candidate.screen) < 24)) return;
+      occupied.push(candidate.screen);
+      const icon = L.divIcon({
+        className: "route-inline-chevron-icon",
+        html: `<span class="route-inline-chevron" style="transform:rotate(${candidate.bearing - 90}deg)"></span>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+      L.marker([candidate.point.lat, candidate.point.lon], { icon, interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(routeChevronLayer);
+    });
+  }
+  map.on("zoomend moveend", refreshRouteChevrons);
+  refreshRouteChevrons();
 
   const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
   L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
-  let currentFix = null;
-  const routeArrowDistances = Array.from({ length: Math.floor(totalMeters / 804.672) }, (_, index) => (index + 1) * 804.672);
-  const routeArrowMarkers = routeArrowDistances.map((along, index) => {
-    const previous = pointAtCourse(Math.max(0, along - 12));
-    const next = pointAtCourse(Math.min(totalMeters, along + 12));
-    const bearing = bearingBetween(previous, next);
-    const icon = L.divIcon({
-      className: "route-direction-icon",
-      html: `<span class="route-direction-arrow" style="display:grid;transform:rotate(${bearing - 90}deg) translateY(11px)">➤</span>`,
-      iconSize: [18, 18],
-      iconAnchor: [9, 9],
-    });
-    const point = pointAtCourse(along);
-    return { index, point, bearing, marker: L.marker([point.lat, point.lon], { icon, interactive: false, keyboard: false, zIndexOffset: 300 }).addTo(map) };
-  });
-  const routeLabelPoints = [
-    { lat: route.start[1], lon: route.start[0] },
-    { lat: route.finish[1], lon: route.finish[0] },
-    ...route.mileMarkers.map(marker => ({ lat: marker.coordinates[1], lon: marker.coordinates[0] })),
-  ];
-  function updateRouteArrowVisibility() {
-    const interval = map.getZoom() <= 13 ? 4 : map.getZoom() <= 15 ? 2 : 1;
-    const occupied = routeLabelPoints.map(point => map.latLngToContainerPoint([point.lat, point.lon]));
-    if (currentFix) occupied.push(map.latLngToContainerPoint([currentFix.lat, currentFix.lon]));
-    routeArrowMarkers.forEach(({ index, point, bearing, marker }) => {
-      const routePosition = map.latLngToContainerPoint([point.lat, point.lon]);
-      const radians = bearing * Math.PI / 180;
-      const position = L.point(routePosition.x + Math.cos(radians) * 11, routePosition.y + Math.sin(radians) * 11);
-      const collides = occupied.some(other => position.distanceTo(other) < 22);
-      const visible = index % interval === 0 && !collides;
-      marker.setOpacity(visible ? 1 : 0);
-      if (visible) occupied.push(position);
-    });
-  }
-  map.on("zoomend moveend", updateRouteArrowVisibility);
-  updateRouteArrowVisibility();
-
   const headingPane = document.createElement("div");
   headingPane.className = "leaflet-heading-pane";
   const mapPane = map.getPane("mapPane");
@@ -188,7 +197,7 @@
   });
 
   const elementIds = [
-    "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "accuracy",
+    "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "live-elevation", "location-accuracy",
     "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
     "help-toggle", "help-body", "elevation-profile", "elevation-chart", "elevation-area", "elevation-line",
     "elevation-cursor", "elevation-value",
@@ -201,6 +210,7 @@
   let following = true;
   let wakeLock = null;
   let navigationMode = true;
+  let manualMapRotation = null;
   let fullRouteMode = false;
   let orientationListening = false;
   let deviceHeading = null;
@@ -216,6 +226,8 @@
   let previewSavedView = null;
   let previewDistance = null;
   let rotationFrame = null, lastRotationFrameAt = null;
+  const activeMapPointers = new Map();
+  let rotationGesture = null;
   const mapAngleSmoother = createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 });
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
@@ -224,11 +236,16 @@
 
   function renderLiveSummary() {
     if (!liveSummary || previewDistance !== null) return;
-    els.distance.textContent = summaryMiles(liveSummary.progress);
-    els.remaining.textContent = summaryMiles(liveSummary.remaining);
+    const hasCourseProgress = liveSummary.status !== "Off course";
+    els.distance.textContent = hasCourseProgress ? summaryMiles(liveSummary.progress) : "—";
+    els.remaining.textContent = hasCourseProgress ? summaryMiles(liveSummary.remaining) : "—";
+    const elevationMeters = elevation.elevationAtDistance(elevation.samples, liveSummary.progress);
+    els["live-elevation"].textContent = hasCourseProgress ? `${Math.round(feet(elevationMeters))} feet` : "—";
     els["course-status"].textContent = liveSummary.status;
     statusClass(els["course-status"], liveSummary.statusClass);
-    els.accuracy.textContent = `±${Math.round(feet(liveSummary.accuracy))} feet`;
+    const accuracyText = `±${Math.round(feet(liveSummary.accuracy))} feet`;
+    els["location-accuracy"].textContent = accuracyText;
+    els["center-control"].setAttribute("aria-label", `Center map on my location. Accuracy ${accuracyText}`);
     const liveMile = Number(miles(liveSummary.progress).toFixed(1));
     els["elevation-profile"].setAttribute("aria-valuenow", String(liveMile));
     els["elevation-profile"].setAttribute("aria-valuetext", `Live position · mile ${liveMile}`);
@@ -334,17 +351,64 @@
     }
   }
   function rotateMap() {
-    const heading = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading) ? deviceHeading : 0;
-    mapAngleSmoother.setTarget(-heading);
+    const targetRotation = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading)
+      ? -deviceHeading
+      : manualMapRotation ?? 0;
+    mapAngleSmoother.setTarget(targetRotation);
     if (rotationFrame === null && !mapAngleSmoother.isSettled()) {
       rotationFrame = requestAnimationFrame(drawMapRotation);
     }
   }
+  const pointerAngle = pointers => {
+    const [first, second] = [...pointers.values()];
+    return Math.atan2(second.y - first.y, second.x - first.x) * 180 / Math.PI;
+  };
+  function setMapRotationImmediately(rotation) {
+    if (rotationFrame !== null) cancelAnimationFrame(rotationFrame);
+    rotationFrame = null;
+    lastRotationFrameAt = null;
+    mapRotation = rotation;
+    mapAngleSmoother.reset(rotation);
+    headingPane.style.rotate = `${rotation}deg`;
+    document.getElementById("map").style.setProperty("--map-heading", `${-rotation}deg`);
+  }
+  function beginManualRotation() {
+    if (activeMapPointers.size !== 2) return;
+    manualMapRotation = mapRotation;
+    applyNavigationMode(false, { preserveRotation: true });
+    setMapRotationImmediately(manualMapRotation);
+    rotationGesture = { startAngle: pointerAngle(activeMapPointers), startRotation: manualMapRotation };
+    renderNavigation();
+  }
+  function updateManualRotation() {
+    if (!rotationGesture || activeMapPointers.size !== 2) return;
+    const angleDelta = signedHeading(pointerAngle(activeMapPointers) - rotationGesture.startAngle);
+    manualMapRotation = rotationGesture.startRotation + angleDelta;
+    setMapRotationImmediately(manualMapRotation);
+  }
+  const mapElement = document.getElementById("map");
+  mapElement.addEventListener("pointerdown", event => {
+    if (event.pointerType === "mouse") return;
+    activeMapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activeMapPointers.size === 2) beginManualRotation();
+  }, { passive: true, capture: true });
+  mapElement.addEventListener("pointermove", event => {
+    if (!activeMapPointers.has(event.pointerId)) return;
+    activeMapPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    updateManualRotation();
+  }, { passive: true, capture: true });
+  const endMapPointer = event => {
+    activeMapPointers.delete(event.pointerId);
+    if (activeMapPointers.size < 2) rotationGesture = null;
+  };
+  mapElement.addEventListener("pointerup", endMapPointer, { passive: true, capture: true });
+  mapElement.addEventListener("pointercancel", endMapPointer, { passive: true, capture: true });
+  const mapOrientationLabel = () => navigationMode ? headingSource || "HEADING" : manualMapRotation !== null ? "MANUAL" : "NORTH UP";
   function showDirection({ arrow = "↑", label, detail, source } = {}) {
     els["turn-arrow"].textContent = arrow;
     els["direction-label"].textContent = label;
     els["direction-detail"].textContent = detail;
-    els["heading-source"].textContent = source || (navigationMode ? headingSource || "HEADING" : "NORTH UP");
+    els["heading-source"].textContent = source || mapOrientationLabel();
   }
   function renderNavigation() {
     rotateMap();
@@ -352,7 +416,7 @@
     els.direction.hidden = Boolean(target && target.paused);
     if (target && target.paused) return;
     if (!target) {
-      showDirection({ label: "Waiting for location", detail: "Live tracking is on", source: navigationMode ? "HEADING" : "NORTH UP" });
+      showDirection({ label: "Waiting for location", detail: "Live tracking is on", source: mapOrientationLabel() });
       return;
     }
     if (target.arrived) {
@@ -441,7 +505,7 @@
       const center = map.getCenter();
       if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) map.setView(centerLatLng, targetZoom, { animate: false });
     }
-    updateRouteArrowVisibility();
+    refreshRouteChevrons();
     renderNavigation();
   }
 
@@ -495,6 +559,7 @@
     map.panTo([point.lat, point.lon], { animate: false });
     els.distance.textContent = summaryMiles(target);
     els.remaining.textContent = summaryMiles(totalMeters - target);
+    els["live-elevation"].textContent = `${Math.round(feet(elevationMeters))} feet`;
     els["elevation-value"].textContent = `${Math.round(feet(elevationMeters))} FT`;
     const chartX = target / totalMeters * 220;
     els["elevation-cursor"].setAttribute("x1", chartX.toFixed(2));
@@ -516,7 +581,7 @@
     } else if (previewSavedView) map.setView(previewSavedView.center, previewSavedView.zoom, { animate: false });
     previewSavedView = null;
     els["elevation-cursor"].setAttribute("hidden", "");
-    els["elevation-value"].textContent = "ELEVATION";
+    els["elevation-value"].textContent = "PROFILE";
     renderLiveSummary();
   }
 
@@ -553,19 +618,20 @@
     els["center-control"].classList.toggle("active", !enabled && following);
     els["center-control"].setAttribute("aria-pressed", String(!enabled && following));
   }
-  function applyNavigationMode(enabled) {
+  function applyNavigationMode(enabled, { preserveRotation = false } = {}) {
     navigationMode = enabled;
+    if (enabled) manualMapRotation = null;
     els["direction-toggle"].classList.toggle("active", enabled);
     els["direction-toggle"].setAttribute("aria-pressed", String(enabled));
     els["direction-toggle"].setAttribute("aria-label", enabled ? "Direction heading enabled" : "Direction heading disabled");
     document.body.classList.toggle("navigation-mode", enabled);
     map.invalidateSize({ pan: false, animate: false });
-    if (currentFix && following && !fullRouteMode) {
+    if (!preserveRotation && currentFix && following && !fullRouteMode) {
       const useHeadingOffset = enabled && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], enabled ? 17 : 16, { animate: false });
     }
-    renderNavigation();
+    if (!preserveRotation) renderNavigation();
   }
   async function toggleNavigation() {
     if (navigationMode) {
@@ -584,6 +650,8 @@
       window.addEventListener("deviceorientation", onOrientation, { passive: true });
       orientationListening = true;
     }
+    following = true;
+    setFullRouteMode(false);
     applyNavigationMode(true);
     if (permission !== "granted") {
       els["direction-label"].textContent = "Move to set direction";
@@ -604,6 +672,8 @@
   }
   els["center-control"].addEventListener("click", centerLiveMap);
   els["route-control"].addEventListener("click", () => {
+    manualMapRotation = null;
+    applyNavigationMode(false);
     setFullRouteMode(true);
     following = false;
     rotateMap();
