@@ -94,7 +94,7 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 
 <https://open-meteo.com/en/docs/elevation-api>
 
-The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and fixed-size round dot show trusted live progress on the graph. While sliding, Route is selected temporarily, Location is deselected, and the map centers the marker on the same right-of-travel pass used by the visible route. With Direction enabled, the selected course bearing points toward the top of the screen; with Direction disabled, the preview remains north-up. Releasing restores the newest live values plus the previous controls, map view, and rotation.
+The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and fixed-size round dot show trusted live progress on the graph. While sliding, Route is selected temporarily, Location is deselected, and the map keeps the marker centered on the same right-of-travel pass used by the visible route. With Direction enabled, the map rotates smoothly around that fixed marker so the selected course bearing points toward the top of the screen; with Direction disabled, the preview remains north-up. Releasing restores the newest live values plus the previous controls, map view, and rotation.
 
 The official page advertises 13.1 miles. Its current source polyline measures approximately 13.32 miles. Race-day closures and course revisions can differ, so re-check Nike's official page before the event.
 

@@ -231,6 +231,13 @@
     const pane = map.getPane(name);
     if (pane) headingPane.appendChild(pane);
   });
+  function syncMapRotationOrigin() {
+    const mapPanePosition = L.DomUtil.getPosition(mapPane) || L.point(0, 0);
+    const viewportCenter = map.getSize().divideBy(2).subtract(mapPanePosition);
+    headingPane.style.transformOrigin = `${viewportCenter.x}px ${viewportCenter.y}px`;
+  }
+  map.on("move zoom resize", syncMapRotationOrigin);
+  syncMapRotationOrigin();
 
   const elementIds = [
     "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "live-elevation", "location-accuracy",
@@ -383,6 +390,7 @@
     const elapsed = lastRotationFrameAt === null ? 16 : Math.min(64, timestamp - lastRotationFrameAt);
     lastRotationFrameAt = timestamp;
     mapRotation = mapAngleSmoother.step(elapsed);
+    syncMapRotationOrigin();
     headingPane.style.rotate = `${mapRotation}deg`;
     document.getElementById("map").style.setProperty("--map-heading", `${-mapRotation}deg`);
     if (!mapAngleSmoother.isSettled()) {
@@ -413,6 +421,7 @@
     lastRotationFrameAt = null;
     mapRotation = rotation;
     mapAngleSmoother.reset(rotation);
+    syncMapRotationOrigin();
     headingPane.style.rotate = `${rotation}deg`;
     document.getElementById("map").style.setProperty("--map-heading", `${-rotation}deg`);
   }
@@ -640,7 +649,6 @@
       setPreviewRouteSelection(true);
     }
     previewDistance = target;
-    setMapRotationImmediately(navigationMode ? -previewBearing : 0);
     const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
     const previewZoom = Math.max(map.getZoom(), 16);
     const displayedPoint = displayedRoutePoint(target, previewZoom);
@@ -651,6 +659,7 @@
     streetTiles.off("load", previewTilesReady);
     streetTiles.once("load", previewTilesReady);
     map.setView(displayedPoint, previewZoom, { animate: false });
+    rotateMap();
     els.distance.textContent = summaryMiles(target);
     els.remaining.textContent = summaryMiles(totalMeters - target);
     els["live-elevation"].textContent = `${Math.round(feet(elevationMeters))} feet`;
