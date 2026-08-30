@@ -264,6 +264,7 @@
   let previewSavedControls = null;
   let previewTileAlong = null;
   let previewDistance = null;
+  let pendingOffCourseRoute = false;
   let rotationFrame = null, lastRotationFrameAt = null;
   const activeMapPointers = new Map();
   let rotationGesture = null;
@@ -539,6 +540,7 @@
     let courseStatus = "Off course", courseStatusClass = "bad";
     if (offFeet <= 100) { courseStatus = "On course"; courseStatusClass = "good"; }
     else if (offFeet <= 300) { courseStatus = "Nearby"; courseStatusClass = "warn"; }
+    const enteredOffCourse = courseStatus === "Off course" && liveSummary?.status !== "Off course";
     liveSummary = { progress, remaining, status: courseStatus, statusClass: courseStatusClass, accuracy: Number(accuracy || 10) };
     renderLiveSummary();
     els["location-error"].hidden = true;
@@ -551,6 +553,8 @@
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy); nearestMarker.setLatLng([nearest.lat, nearest.lon]);
     }
     refreshUserDirection();
+    if (previewDistance !== null) pendingOffCourseRoute = courseStatus === "Off course";
+    else if (enteredOffCourse) showFullRoute({ disableDirection: true });
     if (following && previewDistance === null) {
       const targetZoom = Math.max(map.getZoom(), navigationMode ? 17 : 16);
       const viewCenter = navigationMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
@@ -658,6 +662,8 @@
 
   function endCoursePreview() {
     if (previewDistance === null) return;
+    const showPendingOffCourseRoute = pendingOffCourseRoute;
+    pendingOffCourseRoute = false;
     previewDistance = null;
     if (previewMarker) { map.removeLayer(previewMarker); previewMarker = null; }
     if (previewSavedControls) {
@@ -676,6 +682,7 @@
     previewMapRotation = null;
     previewSavedControls = null;
     renderLiveSummary();
+    if (showPendingOffCourseRoute) showFullRoute({ disableDirection: true });
   }
 
   function previewFromPointer(event) {
@@ -772,14 +779,19 @@
     renderNavigation();
   }
   els["center-control"].addEventListener("click", centerLiveMap);
-  els["route-control"].addEventListener("click", () => {
-    const selectingRouteFromLocation = following && !fullRouteMode;
+  function showFullRoute({ disableDirection = false } = {}) {
     manualMapRotation = null;
-    if (selectingRouteFromLocation) applyNavigationMode(false);
+    if (disableDirection) applyNavigationMode(false, { preserveRotation: true });
     setFullRouteMode(true);
     following = false;
-    rotateMap();
+    setMapRotationImmediately(0);
+    map.invalidateSize({ pan: false, animate: false });
     map.fitBounds(routeBounds, { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
+    renderNavigation();
+  }
+  els["route-control"].addEventListener("click", () => {
+    const selectingRouteFromLocation = following && !fullRouteMode;
+    showFullRoute({ disableDirection: selectingRouteFromLocation });
   });
   map.on("dragstart", () => {
     following = false;

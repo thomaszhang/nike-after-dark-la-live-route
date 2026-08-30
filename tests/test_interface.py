@@ -10,9 +10,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=34')
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=36')
     assert 'styles.css?v=24' in HTML
-    for asset in ('styles.css?v=24', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=34'):
+    for asset in ('styles.css?v=24', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=36'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -141,14 +141,33 @@ def test_explicit_location_to_route_selection_disables_direction_and_two_pointer
     route_handler = route_handler[:route_handler.index("\n  });")]
     assert "selectingRouteFromLocation" in route_handler
     assert "following && !fullRouteMode" in route_handler
-    assert "if (selectingRouteFromLocation) applyNavigationMode(false)" in route_handler
-    assert "applyNavigationMode(false)" in route_handler
+    assert "showFullRoute({ disableDirection: selectingRouteFromLocation })" in route_handler
     assert "manualMapRotation" in JS
     assert "activeMapPointers" in JS
     assert "pointerdown" in JS and "pointermove" in JS and "pointerup" in JS and "pointercancel" in JS
     assert "pointerAngle" in JS
     assert "applyNavigationMode(false, { preserveRotation: true })" in JS[JS.index("function beginManualRotation"):JS.index("function updateManualRotation")]
     assert "headingPane.style.rotate" in JS
+
+
+def test_off_course_transition_defaults_to_route_and_route_press_always_fits_course():
+    position = JS[JS.index("function updatePosition"):JS.index("function locationError")]
+    route_view = JS[JS.index("function showFullRoute"):JS.index('els["route-control"].addEventListener')]
+    assert 'const enteredOffCourse = courseStatus === "Off course" && liveSummary?.status !== "Off course"' in position
+    assert 'if (previewDistance !== null) pendingOffCourseRoute = courseStatus === "Off course"' in position
+    assert "else if (enteredOffCourse) showFullRoute({ disableDirection: true })" in position
+    assert "setMapRotationImmediately(0)" in route_view
+    assert "map.invalidateSize({ pan: false, animate: false })" in route_view
+    assert "map.fitBounds(routeBounds" in route_view
+    assert "showFullRoute({ disableDirection: selectingRouteFromLocation })" in JS
+
+
+def test_off_course_route_selection_waits_for_active_profile_preview_to_end():
+    end_preview = JS[JS.index("function endCoursePreview"):JS.index("function previewFromPointer")]
+    assert "pendingOffCourseRoute" in JS
+    assert "const showPendingOffCourseRoute = pendingOffCourseRoute" in end_preview
+    assert "pendingOffCourseRoute = false" in end_preview
+    assert "if (showPendingOffCourseRoute) showFullRoute({ disableDirection: true })" in end_preview
 
 
 def test_off_course_hides_course_values_but_keeps_preview_values():

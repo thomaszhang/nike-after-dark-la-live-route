@@ -9,6 +9,7 @@ This is a static progressive web app: there is no application server, account, o
 - Starts precise GPS tracking automatically after location permission is granted.
 - Matches each location fix to the most plausible point on the course, including crossings and nearby parallel segments.
 - Shows completed distance, distance remaining, elevation, and course status in a four-column summary.
+- Selects and fits Route when status changes to Off course. A later Location press remains selected unless the status recovers and becomes Off course again.
 - Separates opposing out-and-back passes into parallel Nike-red tracks with an arrow sequence for each travel direction.
 - Includes a full-width elevation profile below the summary. A fixed-size round dot and line show live progress; slide across it to preview the displayed route pass with a forward pointer, then release to return to live tracking.
 - Shows actual GPS position as a blue dot with an uncertainty circle. Whenever GPS or compass heading is available, the blue dot also shows which way the runner is pointing, whether or not heading-up Direction mode is enabled.
