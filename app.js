@@ -14,6 +14,7 @@
   const cumulative = [0];
   for (let i = 1; i < points.length; i++) cumulative.push(cumulative[i - 1] + segmentMeters(points[i - 1], points[i]));
   const totalMeters = cumulative.at(-1);
+  const MAX_REJOIN_GUIDANCE_METERS = 100;
 
   function courseCandidates(lat, lon) {
     const cos = Math.cos(toRad(lat));
@@ -223,6 +224,12 @@
     if (!currentFix || !currentNearest) return;
     els.guidance.hidden = false;
     document.body.classList.add("guidance-active");
+    if (currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) {
+      els["guidance-arrow"].textContent = "!";
+      els["guidance-title"].textContent = "Navigation paused";
+      els["guidance-detail"].textContent = `${distanceText(currentNearest.distance)} from course · use Full route`;
+      return;
+    }
     if (currentNearest.distance > 30) {
       const target = { lat: currentNearest.lat, lon: currentNearest.lon };
       const delta = deviceHeading === null ? 0 : signedHeading(bearingBetween(currentFix, target) - deviceHeading);
@@ -262,6 +269,7 @@
   }
   function navigationTarget() {
     if (!currentFix || !currentNearest) return null;
+    if (currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) return { paused: true, distance: currentNearest.distance };
     if (currentNearest.distance > 30) return { lat: currentNearest.lat, lon: currentNearest.lon, rejoin: true, distance: currentNearest.distance };
     if (currentNearest.along >= totalMeters - 15) return { ...pointAtCourse(totalMeters), arrived: true, rejoin: false, distance: 0 };
     const target = pointAtCourse(currentNearest.along + 50);
@@ -279,11 +287,20 @@
     rotateMap();
     if (!navigationMode) return;
     const target = navigationTarget();
+    if (target?.paused) {
+      els["turn-arrow"].style.transform = "rotate(0deg)";
+      els["turn-arrow"].textContent = "!";
+      els["direction-label"].textContent = "Too far for a direct cue";
+      els["direction-detail"].textContent = `${distanceText(target.distance)} from course · open Full route`;
+      els["heading-source"].textContent = "PAUSED";
+      return;
+    }
     if (!target || deviceHeading === null) {
       els["direction-label"].textContent = currentFix ? "Move to set direction" : "Waiting for location";
       els["direction-detail"].textContent = deviceHeading === null ? "Waiting for GPS movement or compass" : "Acquiring GPS";
       return;
     }
+    els["turn-arrow"].textContent = "↑";
     const desired = bearingBetween(currentFix, target);
     const delta = signedHeading(desired - deviceHeading);
     if (target.arrived) {
@@ -480,6 +497,6 @@
     applyNavigationMode(enabled);
     renderNavigation();
   }
-  function navigationState() { return { deviceHeading, mapRotation, headingSource, currentSpeed, navigationMode, gpsHistory: gpsHistory.length }; }
-  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
+  function navigationState() { return { deviceHeading, mapRotation, headingSource, currentSpeed, navigationMode, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
+  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
