@@ -9,9 +9,10 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=27')
-    assert 'styles.css?v=21' in HTML
-    for asset in ('styles.css?v=21', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=27'):
+    assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=31')
+    assert 'styles.css?v=22' in HTML
+    for asset in ('styles.css?v=22', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=31'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -98,12 +99,13 @@ def test_location_does_not_change_heading_preference():
 
 def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
     assert 'color: "#e90000"' in JS
-    assert re.search(r'color: "#e90000"[^\n]*opacity: \.72', JS)
+    assert re.search(r'color: "#e90000"[^\n]*opacity: \.78', JS)
     assert "route-inline-chevron" in JS
     assert "metersPerPixel * 30" in JS
-    assert "iconAnchor: [7, 7]" in JS
+    assert "iconAnchor: [5, 5]" in JS
     assert "candidate.bearing - 90" in JS
-    assert "position.distanceTo(candidate.screen) < 24" in JS
+    assert "accepted.screen.distanceTo(candidate.screen) < 20" in JS
+    assert "!oppositeBearing(accepted.bearing, candidate.bearing)" in JS
     assert "zIndexOffset: -1000" in JS
     assert "oppositeBearing" in JS
     assert "bearingBetween(previous, next)" in JS
@@ -140,7 +142,7 @@ def test_elevation_profile_is_local_interactive_and_restores_live_state():
     assert 'aria-orientation="horizontal"' in HTML
     assert 'id="elevation-chart"' in HTML
     assert 'id="elevation-cursor"' in HTML
-    assert 'id="elevation-value"' in HTML
+    assert 'id="elevation-progress"' in HTML
     assert "pointerdown" in JS and "pointermove" in JS
     assert "setPointerCapture" in JS
     assert "previewCourseAt" in JS
@@ -151,6 +153,35 @@ def test_elevation_profile_is_local_interactive_and_restores_live_state():
     assert "api.open-meteo.com" not in JS
     assert "fetch(" not in JS
     assert re.search(r"\.elevation-profile\s*\{[^}]*touch-action:none", CSS, re.DOTALL)
+
+
+def test_elevation_profile_is_full_width_below_stats_with_live_progress():
+    assert HTML.index('id="course-status"') < HTML.index('id="elevation-profile"')
+    assert 'id="elevation-value"' not in HTML
+    assert "grid-template-columns:minmax(0,1fr) 54px" not in CSS
+    assert "elevation-progress" in CSS
+    assert "renderElevationProgress(hasCourseProgress ? liveSummary.progress : null)" in JS
+    assert 'els["elevation-cursor"].setAttribute("hidden", "")' not in JS
+
+
+def test_profile_preview_centers_north_up_and_waits_for_tiles():
+    preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
+    assert "previewMapRotation" in JS
+    assert "previewMapRotation = mapAngleSmoother.getTarget()" in preview
+    assert "setMapRotationImmediately(0)" in preview
+    assert "previewDistance !== null" in JS[JS.index("function rotateMap"):JS.index("const pointerAngle")]
+    assert "map.setView([point.lat, point.lon]" in preview
+    assert 'streetTiles.once("load"' in preview
+    assert "map.invalidateSize" in preview
+
+
+def test_bidirectional_route_passes_are_separated_with_both_arrow_directions():
+    assert "routePassLayer" in JS
+    assert "offsetRoutePoint" in JS
+    assert "routePassOffsetPixels" in JS
+    assert "cluster.forEach(candidate" in JS
+    assert "alternatives.length && cell % 2" not in JS
+    assert "zIndexOffset" in JS
 
 
 def test_map_and_interface_follow_system_appearance():

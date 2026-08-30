@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="LA Race Route">
@@ -14,7 +15,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <main id="app">
@@ -27,18 +28,18 @@
           <span id="help-label">More info</span><span id="help-symbol" aria-hidden="true">＋</span>
         </button>
       </div>
+      <div class="stat"><span class="stat-label">DISTANCE</span><strong id="distance">—</strong></div>
+      <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
+      <div class="stat"><span class="stat-label">ELEVATION</span><strong id="live-elevation">—</strong></div>
+      <div class="stat"><span class="stat-label">STATUS</span><strong id="course-status">Locating</strong></div>
       <div id="elevation-profile" class="elevation-profile" role="slider" tabindex="0" aria-orientation="horizontal" aria-label="Course elevation profile. Slide to preview the course." aria-valuemin="0" aria-valuemax="13.3" aria-valuenow="0" aria-valuetext="Start · 26 feet elevation">
         <svg id="elevation-chart" viewBox="0 0 220 30" preserveAspectRatio="none" aria-hidden="true">
           <path id="elevation-area" class="elevation-area"></path>
           <path id="elevation-line" class="elevation-line"></path>
           <line id="elevation-cursor" class="elevation-cursor" x1="0" x2="0" y1="2" y2="28" hidden></line>
+          <circle id="elevation-progress" class="elevation-progress" cx="0" cy="27" r="2.8" hidden></circle>
         </svg>
-        <span id="elevation-value" class="elevation-value">PROFILE</span>
       </div>
-      <div class="stat"><span class="stat-label">DISTANCE</span><strong id="distance">—</strong></div>
-      <div class="stat"><span class="stat-label">REMAINING</span><strong id="remaining">—</strong></div>
-      <div class="stat"><span class="stat-label">ELEVATION</span><strong id="live-elevation">—</strong></div>
-      <div class="stat"><span class="stat-label">STATUS</span><strong id="course-status">Locating</strong></div>
     </section>
 
     <section id="direction" class="navigation-card" aria-live="polite" aria-atomic="true">
@@ -87,6 +88,6 @@
   <script src="route-data.js?v=2"></script>
   <script src="course-elevation.js?v=1"></script>
   <script src="heading-smoothing.js?v=1"></script>
-  <script src="app.js?v=27"></script>
+  <script src="app.js?v=31"></script>
 </body>
 </html>

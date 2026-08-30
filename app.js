@@ -133,13 +133,29 @@
   });
   const routeLatLngs = points.map(p => [p.lat, p.lon]);
   let currentFix = null;
-  const courseRenderer = L.svg({ padding: .5 });
-  const outline = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#ffffff", weight: 7, opacity: .24, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
-  const line = L.polyline(routeLatLngs, { renderer: courseRenderer, color: "#e90000", weight: 5, opacity: .72, lineCap: "round", lineJoin: "round", interactive: false }).addTo(map);
-  map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
-
+  const routeBounds = L.latLngBounds(routeLatLngs);
+  const routePassOffsetPixels = 5;
+  const routePassLayer = L.layerGroup().addTo(map);
   const routeChevronLayer = L.layerGroup().addTo(map);
   const oppositeBearing = (first, second) => Math.abs(signedHeading(first - second)) > 120;
+  map.fitBounds(routeBounds, { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
+
+  function offsetRoutePoint(point, bearing, pixels = routePassOffsetPixels) {
+    const screen = map.latLngToContainerPoint([point.lat, point.lon]);
+    const radians = bearing * Math.PI / 180;
+    return map.containerPointToLatLng([screen.x + Math.cos(radians) * pixels, screen.y + Math.sin(radians) * pixels]);
+  }
+  function refreshRoutePasses() {
+    routePassLayer.clearLayers();
+    const separated = points.map((point, index) => {
+      const previous = points[Math.max(0, index - 1)];
+      const next = points[Math.min(points.length - 1, index + 1)];
+      return offsetRoutePoint(point, bearingBetween(previous, next));
+    });
+    L.polyline(separated, { color: "#ffffff", weight: 6, opacity: .3, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routePassLayer);
+    L.polyline(separated, { color: "#e90000", weight: 4, opacity: .78, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routePassLayer);
+  }
+
   function refreshRouteChevrons() {
     routeChevronLayer.clearLayers();
     const latitude = map.getCenter().lat * Math.PI / 180;
@@ -153,35 +169,40 @@
       if (!visibleBounds.contains([point.lat, point.lon])) continue;
       const previous = pointAtCourse(Math.max(0, along - tangentOffset));
       const next = pointAtCourse(Math.min(totalMeters, along + tangentOffset));
-      candidates.push({ point, bearing: bearingBetween(previous, next), screen: map.latLngToContainerPoint([point.lat, point.lon]) });
+      const bearing = bearingBetween(previous, next);
+      const shifted = offsetRoutePoint(point, bearing);
+      candidates.push({ point: shifted, bearing, screen: map.latLngToContainerPoint(shifted) });
     }
     const clusters = [];
     candidates.forEach(candidate => {
-      const cluster = clusters.find(item => item[0].screen.distanceTo(candidate.screen) < 12);
+      const cluster = clusters.find(item => item[0].screen.distanceTo(candidate.screen) < 15);
       if (cluster) cluster.push(candidate);
       else clusters.push([candidate]);
     });
     const reserved = currentFix ? [map.latLngToContainerPoint([currentFix.lat, currentFix.lon])] : [];
     const occupied = [];
     clusters.forEach(cluster => {
-      const first = cluster[0];
-      const alternatives = cluster.filter(candidate => oppositeBearing(first.bearing, candidate.bearing));
-      const cell = Math.abs(Math.floor(first.screen.x / 28) * 31 + Math.floor(first.screen.y / 28) * 17);
-      const candidate = alternatives.length && cell % 2 ? alternatives[cell % alternatives.length] : first;
-      if (reserved.some(position => position.distanceTo(candidate.screen) < 24)) return;
-      if (occupied.some(position => position.distanceTo(candidate.screen) < 24)) return;
-      occupied.push(candidate.screen);
-      const icon = L.divIcon({
-        className: "route-inline-chevron-icon",
-        html: `<span class="route-inline-chevron" style="transform:rotate(${candidate.bearing - 90}deg)"></span>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+      cluster.forEach(candidate => {
+        if (reserved.some(position => position.distanceTo(candidate.screen) < 18)) return;
+        const blocks = occupied.some(accepted => accepted.screen.distanceTo(candidate.screen) < 20 && !oppositeBearing(accepted.bearing, candidate.bearing));
+        if (blocks) return;
+        occupied.push(candidate);
+        const icon = L.divIcon({
+          className: "route-inline-chevron-icon",
+          html: `<span class="route-inline-chevron" style="transform:rotate(${candidate.bearing - 90}deg)"></span>`,
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
+        });
+        L.marker(candidate.point, { icon, interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(routeChevronLayer);
       });
-      L.marker([candidate.point.lat, candidate.point.lon], { icon, interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(routeChevronLayer);
     });
   }
-  map.on("zoomend moveend", refreshRouteChevrons);
-  refreshRouteChevrons();
+  function refreshRoutePresentation() {
+    refreshRoutePasses();
+    refreshRouteChevrons();
+  }
+  map.on("zoomend moveend", refreshRoutePresentation);
+  refreshRoutePresentation();
 
   const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
   L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
@@ -200,7 +221,7 @@
     "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "live-elevation", "location-accuracy",
     "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
     "help-toggle", "help-body", "elevation-profile", "elevation-chart", "elevation-area", "elevation-line",
-    "elevation-cursor", "elevation-value",
+    "elevation-cursor", "elevation-progress",
   ];
   const els = Object.fromEntries(elementIds.map(id => [id, document.getElementById(id)]));
   let watchId = null;
@@ -224,10 +245,13 @@
   let liveSummary = null;
   let previewMarker = null;
   let previewSavedView = null;
+  let previewMapRotation = null;
+  let previewTileAlong = null;
   let previewDistance = null;
   let rotationFrame = null, lastRotationFrameAt = null;
   const activeMapPointers = new Map();
   let rotationGesture = null;
+  let elevationScale = null;
   const mapAngleSmoother = createAngleSmoother({ initialAngle: 0, deadZoneDegrees: 1.5, timeConstantMs: 220 });
   let gpsHistory = [];
   const miles = meters => meters / 1609.344;
@@ -249,6 +273,7 @@
     const liveMile = Number(miles(liveSummary.progress).toFixed(1));
     els["elevation-profile"].setAttribute("aria-valuenow", String(liveMile));
     els["elevation-profile"].setAttribute("aria-valuetext", `Live position · mile ${liveMile}`);
+    renderElevationProgress(hasCourseProgress ? liveSummary.progress : null);
   }
 
   function statusClass(element, name) { element.className = name || ""; }
@@ -351,7 +376,9 @@
     }
   }
   function rotateMap() {
-    const targetRotation = navigationMode && !fullRouteMode && Number.isFinite(deviceHeading)
+    const targetRotation = previewDistance !== null
+      ? 0
+      : navigationMode && !fullRouteMode && Number.isFinite(deviceHeading)
       ? -deviceHeading
       : manualMapRotation ?? 0;
     mapAngleSmoother.setTarget(targetRotation);
@@ -537,6 +564,7 @@
     const minimum = Math.min(...elevations) - 3;
     const maximum = Math.max(...elevations) + 3;
     const range = Math.max(1, maximum - minimum);
+    elevationScale = { minimum, range };
     const coordinates = samples.map(([along, meters]) => {
       const x = along / totalMeters * 220;
       const y = 27 - (meters - minimum) / range * 24;
@@ -547,24 +575,49 @@
     els["elevation-area"].setAttribute("d", `${linePath} L220,30 L0,30 Z`);
   }
 
+  function renderElevationProgress(along, previewing = false) {
+    const hidden = !Number.isFinite(along) || !elevationScale;
+    els["elevation-cursor"].toggleAttribute("hidden", hidden);
+    els["elevation-progress"].toggleAttribute("hidden", hidden);
+    if (hidden) return;
+    const target = Math.max(0, Math.min(totalMeters, along));
+    const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
+    const chartX = target / totalMeters * 220;
+    const chartY = 27 - (elevationMeters - elevationScale.minimum) / elevationScale.range * 24;
+    els["elevation-cursor"].setAttribute("x1", chartX.toFixed(2));
+    els["elevation-cursor"].setAttribute("x2", chartX.toFixed(2));
+    els["elevation-cursor"].classList.toggle("previewing", previewing);
+    els["elevation-progress"].setAttribute("cx", chartX.toFixed(2));
+    els["elevation-progress"].setAttribute("cy", chartY.toFixed(2));
+    els["elevation-progress"].classList.toggle("previewing", previewing);
+  }
+
   const previewIcon = L.divIcon({ className: "route-preview-dot", iconSize: [16, 16], iconAnchor: [8, 8] });
+  function previewTilesReady() {
+    map.fire("previewtilesready", { along: previewTileAlong });
+  }
   function previewCourseAt(along) {
     const target = Math.max(0, Math.min(totalMeters, along));
-    if (previewDistance === null) previewSavedView = { center: map.getCenter(), zoom: map.getZoom() };
+    if (previewDistance === null) {
+      previewSavedView = { center: map.getCenter(), zoom: map.getZoom() };
+      previewMapRotation = mapAngleSmoother.getTarget();
+      setMapRotationImmediately(0);
+    }
     previewDistance = target;
     const point = pointAtCourse(target);
     const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
     if (!previewMarker) previewMarker = L.marker([point.lat, point.lon], { icon: previewIcon, interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
     else previewMarker.setLatLng([point.lat, point.lon]);
-    map.panTo([point.lat, point.lon], { animate: false });
+    const previewZoom = Math.max(map.getZoom(), 16);
+    map.invalidateSize({ pan: false, animate: false });
+    previewTileAlong = target;
+    streetTiles.off("load", previewTilesReady);
+    streetTiles.once("load", previewTilesReady);
+    map.setView([point.lat, point.lon], previewZoom, { animate: false });
     els.distance.textContent = summaryMiles(target);
     els.remaining.textContent = summaryMiles(totalMeters - target);
     els["live-elevation"].textContent = `${Math.round(feet(elevationMeters))} feet`;
-    els["elevation-value"].textContent = `${Math.round(feet(elevationMeters))} FT`;
-    const chartX = target / totalMeters * 220;
-    els["elevation-cursor"].setAttribute("x1", chartX.toFixed(2));
-    els["elevation-cursor"].setAttribute("x2", chartX.toFixed(2));
-    els["elevation-cursor"].removeAttribute("hidden");
+    renderElevationProgress(target, true);
     const mileValue = Number(miles(target).toFixed(1));
     els["elevation-profile"].setAttribute("aria-valuenow", String(mileValue));
     els["elevation-profile"].setAttribute("aria-valuetext", `Mile ${mileValue} · ${Math.round(feet(elevationMeters))} feet elevation`);
@@ -579,9 +632,11 @@
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], previewSavedView?.zoom ?? map.getZoom(), { animate: false });
     } else if (previewSavedView) map.setView(previewSavedView.center, previewSavedView.zoom, { animate: false });
+    if (previewMapRotation !== null) setMapRotationImmediately(previewMapRotation);
+    streetTiles.off("load", previewTilesReady);
+    previewTileAlong = null;
     previewSavedView = null;
-    els["elevation-cursor"].setAttribute("hidden", "");
-    els["elevation-value"].textContent = "PROFILE";
+    previewMapRotation = null;
     renderLiveSummary();
   }
 
@@ -677,7 +732,7 @@
     setFullRouteMode(true);
     following = false;
     rotateMap();
-    map.fitBounds(line.getBounds(), { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
+    map.fitBounds(routeBounds, { paddingTopLeft: [20, 190], paddingBottomRight: [20, 100] });
   });
   map.on("dragstart", () => {
     following = false;
@@ -717,6 +772,18 @@
     renderNavigation();
   }
   function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode, fullRouteMode, following, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
+  function mapState(courseDistance = null) {
+    const center = map.getCenter();
+    const size = map.getSize();
+    const target = Number.isFinite(courseDistance) ? pointAtCourse(courseDistance) : null;
+    const targetScreen = target ? map.latLngToContainerPoint([target.lat, target.lon]) : null;
+    const tiles = [...document.querySelectorAll(".leaflet-tile")];
+    return {
+      center: { lat: center.lat, lng: center.lng }, zoom: map.getZoom(), viewport: { x: size.x / 2, y: size.y / 2 },
+      targetScreen: targetScreen ? { x: targetScreen.x, y: targetScreen.y } : null,
+      loadedTiles: tiles.filter(tile => tile.complete && tile.naturalWidth > 0).length, totalTiles: tiles.length,
+    };
+  }
   const triggerMapDragStart = () => map.fire("dragstart");
-  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, triggerMapDragStart, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
+  window.__routeAppTest = { nearestOnCourse, selectCoursePosition, pointAtCourse, bearingBetween, courseBearing, updatePosition, totalMeters, maxRejoinGuidanceMeters: MAX_REJOIN_GUIDANCE_METERS, startTracking, stopTracking, setTestNavigation, setFullRouteMode, navigationState, mapState, triggerMapDragStart, routeInstruction, maneuverInstruction, nextManeuver, maneuvers, signedHeading };
 })();
