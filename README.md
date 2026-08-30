@@ -10,7 +10,8 @@ This is a static progressive web app: there is no application server, account, o
 - Matches each location fix to the most plausible point on the course, including crossings and nearby parallel segments.
 - Shows completed distance, distance remaining, elevation, and course status in a four-column summary.
 - Separates opposing out-and-back passes into parallel Nike-red tracks with an arrow sequence for each travel direction.
-- Includes a full-width elevation profile below the summary. A line and dot show live progress; slide across it to preview a centered street-level course view, then release to return to live tracking.
+- Includes a full-width elevation profile below the summary. A fixed-size round dot and line show live progress; slide across it to preview the displayed route pass with a forward pointer, then release to return to live tracking.
+- Shows actual GPS position as a blue dot with an uncertainty circle. Whenever GPS or compass heading is available, the blue dot also shows which way the runner is pointing, whether or not heading-up Direction mode is enabled.
 - Rotates only the visual map panes for heading-up navigation, so touch dragging stays aligned with the screen.
 - Smooths compass changes with a 1.5° dead zone and 220 ms response curve.
 - Detects upcoming course turns from the route geometry.
@@ -74,7 +75,7 @@ Controls:
 
 Raw GPS and compass readings stay in browser memory. The app has no analytics, account system, location API, or application backend, and it does not persist location history.
 
-The browser does request OpenStreetMap tiles for the visible map. As with any web map, the tile provider receives normal request metadata and the requested tile coordinates, which identify the displayed map area. The service worker caches same-origin application files; it does not add location storage.
+The browser requests OpenStreetMap tiles for the visible map plus enough surrounding area to cover the screen while it rotates. As with any web map, the tile provider receives normal request metadata and the requested tile coordinates, which identify the displayed map area. OpenStreetMap credit is available under More info rather than over the map. The service worker caches same-origin application files; it does not add location storage.
 
 ## Offline behavior
 
@@ -92,7 +93,7 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 
 <https://open-meteo.com/en/docs/elevation-api>
 
-The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and dot show trusted live progress on the graph. While sliding, the graph and summary preview the selected point and the map switches north-up, centers at street zoom, and loads the visible OpenStreetMap tiles. Releasing restores the newest live values and the previous map view and rotation.
+The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and fixed-size round dot show trusted live progress on the graph. While sliding, the graph and summary preview the selected point and the map switches north-up, centers the marker on the same right-of-travel pass used by the visible route, shows forward course direction, and loads tiles for the full rotatable viewport. Releasing restores the newest live values and the previous map view and rotation.
 
 The official page advertises 13.1 miles. Its current source polyline measures approximately 13.32 miles. Race-day closures and course revisions can differ, so re-check Nike's official page before the event.
 

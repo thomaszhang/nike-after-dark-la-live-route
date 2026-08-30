@@ -15,7 +15,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <main id="app">
@@ -37,8 +37,8 @@
           <path id="elevation-area" class="elevation-area"></path>
           <path id="elevation-line" class="elevation-line"></path>
           <line id="elevation-cursor" class="elevation-cursor" x1="0" x2="0" y1="2" y2="28" hidden></line>
-          <circle id="elevation-progress" class="elevation-progress" cx="0" cy="27" r="2.8" hidden></circle>
         </svg>
+        <span id="elevation-progress" class="elevation-progress" hidden></span>
       </div>
     </section>
 
@@ -78,6 +78,7 @@
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
         <p>Elevation: Copernicus DEM GLO-90 via <a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo ↗</a>.</p>
+        <p>Map data: <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors ↗</a>.</p>
         <p><a href="https://www.afterdarktour.nike.com/en/la" target="_blank" rel="noopener">Official Nike race page ↗</a></p>
       </div>
     </section>
@@ -88,6 +89,6 @@
   <script src="route-data.js?v=2"></script>
   <script src="course-elevation.js?v=1"></script>
   <script src="heading-smoothing.js?v=1"></script>
-  <script src="app.js?v=31"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

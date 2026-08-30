@@ -109,19 +109,27 @@
   }
   const maneuvers = buildManeuvers();
 
-  const map = L.map("map", { zoomControl: false, attributionControl: true, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
+  const map = L.map("map", { zoomControl: false, attributionControl: false, preferCanvas: false, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false });
   const appearance = window.matchMedia("(prefers-color-scheme: dark)");
   const tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
   const applyAppearance = dark => document.body.classList.toggle("dark-appearance", dark);
   applyAppearance(appearance.matches);
-  const streetTiles = L.tileLayer(tileUrl, {
+  const RotationBufferedTileLayer = L.TileLayer.extend({
+    _getTiledPixelBounds(center) {
+      const bounds = L.TileLayer.prototype._getTiledPixelBounds.call(this, center);
+      const size = bounds.getSize();
+      const diagonal = Math.hypot(size.x, size.y);
+      const expansion = L.point((diagonal - size.x) / 2, (diagonal - size.y) / 2);
+      return L.bounds(bounds.min.subtract(expansion), bounds.max.add(expansion));
+    },
+  });
+  const streetTiles = new RotationBufferedTileLayer(tileUrl, {
     subdomains: "abcd",
     maxZoom: 20,
     detectRetina: true,
     updateWhenIdle: true,
     updateWhenZooming: false,
     keepBuffer: 4,
-    attribution: "© OpenStreetMap contributors",
   }).addTo(map);
   streetTiles.on("tileerror", event => {
     const tile = event.tile;
@@ -144,6 +152,13 @@
     const screen = map.latLngToContainerPoint([point.lat, point.lon]);
     const radians = bearing * Math.PI / 180;
     return map.containerPointToLatLng([screen.x + Math.cos(radians) * pixels, screen.y + Math.sin(radians) * pixels]);
+  }
+  function displayedRoutePoint(along, zoom = map.getZoom()) {
+    const point = pointAtCourse(along);
+    const bearing = courseBearing(along);
+    const projected = map.project([point.lat, point.lon], zoom);
+    const radians = bearing * Math.PI / 180;
+    return map.unproject([projected.x + Math.cos(radians) * routePassOffsetPixels, projected.y + Math.sin(radians) * routePassOffsetPixels], zoom);
   }
   function refreshRoutePasses() {
     routePassLayer.clearLayers();
@@ -431,6 +446,14 @@
   mapElement.addEventListener("pointerup", endMapPointer, { passive: true, capture: true });
   mapElement.addEventListener("pointercancel", endMapPointer, { passive: true, capture: true });
   const mapOrientationLabel = () => navigationMode ? headingSource || "HEADING" : manualMapRotation !== null ? "MANUAL" : "NORTH UP";
+  const userDirectionIcon = L.divIcon({ className: "user-dot", html: '<span class="user-direction-arrow"></span><span class="user-center"></span>', iconSize: [34, 34], iconAnchor: [17, 17] });
+  function refreshUserDirection() {
+    const element = userMarker?.getElement();
+    if (!element) return;
+    const hasHeading = Number.isFinite(deviceHeading);
+    element.classList.toggle("has-heading", hasHeading);
+    if (hasHeading) element.style.setProperty("--user-heading", `${deviceHeading}deg`);
+  }
   function showDirection({ arrow = "↑", label, detail, source } = {}) {
     els["turn-arrow"].textContent = arrow;
     els["direction-label"].textContent = label;
@@ -439,6 +462,7 @@
   }
   function renderNavigation() {
     rotateMap();
+    refreshUserDirection();
     const target = navigationTarget();
     els.direction.hidden = Boolean(target && target.paused);
     if (target && target.paused) return;
@@ -519,12 +543,13 @@
     els["location-error"].hidden = true;
     const ll = [lat, lon];
     if (!userMarker) {
-      userMarker = L.marker(ll, { icon: L.divIcon({ className: "user-dot", iconAnchor: [11, 11] }), zIndexOffset: 1000 }).addTo(map).bindTooltip("You");
+      userMarker = L.marker(ll, { icon: userDirectionIcon, zIndexOffset: 1000 }).addTo(map).bindTooltip("You");
       accuracyCircle = L.circle(ll, { radius: accuracy, color: "#1689ff", weight: 1, fillColor: "#1689ff", fillOpacity: .1 }).addTo(map);
       nearestMarker = L.circleMarker([nearest.lat, nearest.lon], { radius: 4, color: "white", weight: 2, fillColor: "#ff1616", fillOpacity: 1 }).addTo(map);
     } else {
       userMarker.setLatLng(ll); accuracyCircle.setLatLng(ll).setRadius(accuracy); nearestMarker.setLatLng([nearest.lat, nearest.lon]);
     }
+    refreshUserDirection();
     if (following && previewDistance === null) {
       const targetZoom = Math.max(map.getZoom(), navigationMode ? 17 : 16);
       const viewCenter = navigationMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
@@ -587,12 +612,16 @@
     els["elevation-cursor"].setAttribute("x1", chartX.toFixed(2));
     els["elevation-cursor"].setAttribute("x2", chartX.toFixed(2));
     els["elevation-cursor"].classList.toggle("previewing", previewing);
-    els["elevation-progress"].setAttribute("cx", chartX.toFixed(2));
-    els["elevation-progress"].setAttribute("cy", chartY.toFixed(2));
+    els["elevation-progress"].style.left = `${target / totalMeters * 100}%`;
+    els["elevation-progress"].style.top = `${chartY}px`;
     els["elevation-progress"].classList.toggle("previewing", previewing);
   }
 
-  const previewIcon = L.divIcon({ className: "route-preview-dot", iconSize: [16, 16], iconAnchor: [8, 8] });
+  const previewDirectionIcon = bearing => L.divIcon({
+    className: "route-preview-direction",
+    html: `<span class="route-preview-arrow" style="transform:rotate(${bearing}deg)"></span><span class="route-preview-center"></span>`,
+    iconSize: [36, 36], iconAnchor: [18, 18],
+  });
   function previewTilesReady() {
     map.fire("previewtilesready", { along: previewTileAlong });
   }
@@ -604,16 +633,17 @@
       setMapRotationImmediately(0);
     }
     previewDistance = target;
-    const point = pointAtCourse(target);
     const elevationMeters = elevation.elevationAtDistance(elevation.samples, target);
-    if (!previewMarker) previewMarker = L.marker([point.lat, point.lon], { icon: previewIcon, interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
-    else previewMarker.setLatLng([point.lat, point.lon]);
     const previewZoom = Math.max(map.getZoom(), 16);
+    const displayedPoint = displayedRoutePoint(target, previewZoom);
+    const previewBearing = courseBearing(target);
+    if (!previewMarker) previewMarker = L.marker(displayedPoint, { icon: previewDirectionIcon(previewBearing), interactive: false, keyboard: false, zIndexOffset: 1500 }).addTo(map);
+    else previewMarker.setLatLng(displayedPoint).setIcon(previewDirectionIcon(previewBearing));
     map.invalidateSize({ pan: false, animate: false });
     previewTileAlong = target;
     streetTiles.off("load", previewTilesReady);
     streetTiles.once("load", previewTilesReady);
-    map.setView([point.lat, point.lon], previewZoom, { animate: false });
+    map.setView(displayedPoint, previewZoom, { animate: false });
     els.distance.textContent = summaryMiles(target);
     els.remaining.textContent = summaryMiles(totalMeters - target);
     els["live-elevation"].textContent = `${Math.round(feet(elevationMeters))} feet`;

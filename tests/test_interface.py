@@ -10,9 +10,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=31')
-    assert 'styles.css?v=22' in HTML
-    for asset in ('styles.css?v=22', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=31'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=33')
+    assert 'styles.css?v=24' in HTML
+    for asset in ('styles.css?v=24', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=33'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -89,12 +89,34 @@ def test_heading_does_not_rotate_leaflet_input_container():
     assert "height:100dvh" in CSS
 
 
+def test_rotated_map_requests_tiles_for_the_full_viewport_diagonal():
+    assert "const RotationBufferedTileLayer = L.TileLayer.extend" in JS
+    assert "_getTiledPixelBounds(center)" in JS
+    assert "L.TileLayer.prototype._getTiledPixelBounds.call(this, center)" in JS
+    assert "Math.hypot(size.x, size.y)" in JS
+    assert "bounds.min.subtract(expansion)" in JS
+    assert "bounds.max.add(expansion)" in JS
+    assert "new RotationBufferedTileLayer(tileUrl" in JS
+    assert "keepBuffer: 4" in JS
+
+
 def test_location_does_not_change_heading_preference():
     handler = re.search(r'els\["center-control"\]\.addEventListener\("click",\s*(\w+)\)', JS)
     assert handler
     function_start = JS.index(f"function {handler.group(1)}()")
     function_end = JS.index("\n  }", function_start)
     assert "toggleNavigation" not in JS[function_start:function_end]
+
+
+def test_live_location_marker_shows_heading_whenever_known():
+    assert "userDirectionIcon" in JS
+    assert "refreshUserDirection" in JS
+    assert 'element.classList.toggle("has-heading", !hasHeading)' not in JS
+    assert 'element.classList.toggle("has-heading", hasHeading)' in JS
+    assert 'element.style.setProperty("--user-heading", `${deviceHeading}deg`)' in JS
+    assert "refreshUserDirection();" in JS[JS.index("function renderNavigation"):JS.index("function updatePosition")]
+    assert "user-direction-arrow" in CSS
+    assert re.search(r"\.user-dot:not\(\.has-heading\) \.user-direction-arrow\s*\{[^}]*display:none", CSS, re.DOTALL)
 
 
 def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
@@ -164,15 +186,33 @@ def test_elevation_profile_is_full_width_below_stats_with_live_progress():
     assert 'els["elevation-cursor"].setAttribute("hidden", "")' not in JS
 
 
+def test_elevation_progress_dot_remains_round_when_chart_stretches():
+    assert '<circle id="elevation-progress"' not in HTML
+    assert '<span id="elevation-progress"' in HTML
+    assert re.search(r"\.elevation-progress\s*\{[^}]*width:8px[^}]*height:8px[^}]*border-radius:50%", CSS, re.DOTALL)
+    assert 'els["elevation-progress"].style.left = `${target / totalMeters * 100}%`' in JS
+    assert 'els["elevation-progress"].style.top = `${chartY}px`' in JS
+
+
 def test_profile_preview_centers_north_up_and_waits_for_tiles():
     preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
     assert "previewMapRotation" in JS
     assert "previewMapRotation = mapAngleSmoother.getTarget()" in preview
     assert "setMapRotationImmediately(0)" in preview
     assert "previewDistance !== null" in JS[JS.index("function rotateMap"):JS.index("const pointerAngle")]
-    assert "map.setView([point.lat, point.lon]" in preview
+    assert "map.setView(displayedPoint" in preview
     assert 'streetTiles.once("load"' in preview
     assert "map.invalidateSize" in preview
+
+
+def test_preview_marker_follows_displayed_pass_and_shows_forward_direction():
+    preview = JS[JS.index("function previewCourseAt"):JS.index("function endCoursePreview")]
+    assert "displayedRoutePoint(target, previewZoom)" in preview
+    assert "courseBearing(target)" in preview
+    assert "previewDirectionIcon" in preview
+    assert "route-preview-direction" in CSS
+    assert "route-preview-center" in CSS
+    assert "L.marker(displayedPoint" in preview
 
 
 def test_bidirectional_route_passes_are_separated_with_both_arrow_directions():
@@ -192,6 +232,14 @@ def test_map_and_interface_follow_system_appearance():
     assert "dark-appearance" in JS
     assert "light_all" not in JS
     assert "matchMedia" in JS
+
+
+def test_map_attribution_is_kept_out_of_viewport_but_retained_in_help():
+    assert "attributionControl: false" in JS
+    assert "attribution:" not in JS
+    assert "leaflet-control-attribution" not in CSS
+    assert 'href="https://www.openstreetmap.org/copyright"' in HTML
+    assert "OpenStreetMap contributors" in HTML
 
 
 def test_help_describes_automatic_tracking_and_single_bottom_navigation():

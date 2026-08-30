@@ -21,7 +21,7 @@ The main design goals are:
 5. `selectCoursePosition()` scores plausible candidates using distance, recent progress, GPS accuracy, speed, and travel heading. This reduces jumps at crossings and nearby parallel segments.
 6. The selected point updates progress, remaining distance, off-course status, user/route markers, and navigation guidance.
 7. Compass events or movement-derived GPS headings update the heading target.
-8. The elevation profile reads locally stored Copernicus DEM samples. Trusted live progress moves a persistent graph cursor and dot. Pointer movement interpolates a course distance, temporarily updates the summary, switches the map north-up, centers a street-level view at `pointAtCourse(distance)`, and requests its visible tiles; release restores the newest live summary plus the saved map view and rotation.
+8. The elevation profile reads locally stored Copernicus DEM samples. Trusted live progress moves a persistent graph cursor and fixed-size HTML dot, avoiding distortion from the chart SVG's nonuniform scaling. Pointer movement interpolates a course distance, temporarily updates the summary, switches the map north-up, centers a street-level view on the same screen-offset route pass that is rendered, shows its forward bearing, and requests tiles for the full rotatable viewport; release restores the newest live summary plus the saved map view and rotation.
 9. `heading-smoothing.js` advances the visible map angle on animation frames.
 
 No fix is sent to an application server or written to persistent project storage.
@@ -58,7 +58,9 @@ Incoming headings are angle-aware: differences use the shortest path across 359Â
 - 0.05Â° settled threshold;
 - elapsed-time-based interpolation for consistent behavior across frame rates.
 
-Only Leaflet's visual panes are placed inside `.leaflet-heading-pane` and rotated. The `#map` input container remains unrotated, so a rightward finger drag remains rightward on screen at any heading. A two-pointer bearing gesture rotates the visual pane manually, disables Direction, and saves that rotation until Route resets north-up or Direction resumes heading-up.
+Only Leaflet's visual panes are placed inside `.leaflet-heading-pane` and rotated. The `#map` input container remains unrotated, so a rightward finger drag remains rightward on screen at any heading. A two-pointer bearing gesture rotates the visual pane manually, disables Direction, and saves that rotation until Route resets north-up or Direction resumes heading-up. The tile layer expands Leaflet's requested pixel bounds to the viewport diagonal, so the rotated rectangle's corners remain covered at every angle instead of exposing unloaded edges.
+
+The blue marker stays at the raw browser geolocation fix; its circle shows reported GPS uncertainty. When either movement-derived GPS direction or compass direction is known, a pointer on that marker rotates to the geographic heading independently of whether Direction mode is enabled. Course progress remains a separate route projection and does not move the blue marker onto the course.
 
 ## Navigation and off-course safety
 
@@ -76,7 +78,7 @@ These thresholds are product behavior and safety behavior. Change them only with
 
 ## Map appearance and controls
 
-The application follows `prefers-color-scheme`. OpenStreetMap provides the map tiles; dark appearance is applied locally to the map presentation rather than switching to a credentialed tile provider.
+The application follows `prefers-color-scheme`. OpenStreetMap provides the map tiles; dark appearance is applied locally to the map presentation rather than switching to a credentialed tile provider. The distracting Leaflet attribution overlay is disabled; required OpenStreetMap contributor credit remains accessible under More info.
 
 The bottom bar separates view and heading state. Route fits the complete course, disables Direction, and shows north-up. Location returns to the live position and shows GPS accuracy on its second line. Direction exits Route, resumes location following, and enables heading-up rotation. Green dots indicate active controls; Location and Direction start active. Heading-up mode leads the map center approximately 70 m in front of the current position.
 
