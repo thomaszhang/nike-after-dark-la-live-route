@@ -9,9 +9,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 
 def test_heading_smoother_loads_before_app_and_is_cached():
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=10')
-    assert 'styles.css?v=10' in HTML
-    for asset in ('styles.css?v=10', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=10'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=11')
+    assert 'styles.css?v=11' in HTML
+    for asset in ('styles.css?v=11', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'heading-smoothing.js?v=1', 'app.js?v=11'):
         assert f'"{asset}"' in SW
     assert 'e.request.mode==="navigate"' in SW
     assert '"heading-smoothing.js"' not in SW
@@ -42,7 +42,9 @@ def test_navigation_is_one_bottom_interface():
     assert re.search(r"\.navigation-card\s*\{[^}]*bottom:", CSS, re.DOTALL)
     assert "renderGuidance" not in JS
     assert "target.paused" in JS
-    assert 'label: "Navigation paused"' in JS
+    assert "els.direction.hidden = Boolean(target && target.paused)" in JS
+    assert ".navigation-card[hidden] { display:none; }" in CSS
+    assert 'label: "Navigation paused"' not in JS
     assert "MAX_REJOIN_GUIDANCE_METERS = 100" in JS
 
 

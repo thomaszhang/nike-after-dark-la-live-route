@@ -273,12 +273,10 @@
   function renderNavigation() {
     rotateMap();
     const target = navigationTarget();
+    els.direction.hidden = Boolean(target && target.paused);
+    if (target && target.paused) return;
     if (!target) {
       showDirection({ label: "Waiting for location", detail: "Live tracking is on", source: navigationMode ? "HEADING" : "NORTH UP" });
-      return;
-    }
-    if (target.paused) {
-      showDirection({ arrow: "!", label: "Navigation paused", detail: `${distanceText(target.distance)} from course · open Full route`, source: "PAUSED" });
       return;
     }
     if (target.arrived) {
