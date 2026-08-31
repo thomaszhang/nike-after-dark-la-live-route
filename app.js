@@ -143,7 +143,7 @@
   let currentFix = null;
   const routeBounds = L.latLngBounds(routeLatLngs);
   const routePassOffsetPixels = 5;
-  const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
+  const label = (text, className, tilt = 0, shift = 0) => L.divIcon({ className, html: `<span class="map-label-inner" style="--label-tilt:${tilt}deg;--label-shift:${shift}px">${text}</span>`, iconAnchor: [className.startsWith("course-label") ? 13 : 24, 13] });
   const routePassLayer = L.layerGroup().addTo(map);
   const routeChevronLayer = L.layerGroup().addTo(map);
   const mileMarkerLayer = L.layerGroup().addTo(map);
@@ -169,15 +169,16 @@
       const next = points[Math.min(points.length - 1, index + 1)];
       return offsetRoutePoint(point, bearingBetween(previous, next));
     });
-    L.polyline(separated, { color: "#ffffff", weight: 6, opacity: .3, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routePassLayer);
-    L.polyline(separated, { color: "#e90000", weight: 4, opacity: .78, lineCap: "round", lineJoin: "round", interactive: false }).addTo(routePassLayer);
+    L.polyline(separated, { color: "#3a1712", weight: 10, opacity: .34, lineCap: "round", lineJoin: "round", interactive: false, className: "course-shadow-line" }).addTo(routePassLayer);
+    L.polyline(separated, { color: "#fff4dc", weight: 7, opacity: .94, lineCap: "round", lineJoin: "round", interactive: false, className: "course-paper-line" }).addTo(routePassLayer);
+    L.polyline(separated, { color: "#e3261f", weight: 4.5, opacity: .96, lineCap: "round", lineJoin: "round", interactive: false, className: "course-ink-line" }).addTo(routePassLayer);
   }
 
   function refreshRouteChevrons() {
     routeChevronLayer.clearLayers();
     const latitude = map.getCenter().lat * Math.PI / 180;
     const metersPerPixel = 156543.03392 * Math.cos(latitude) / (2 ** map.getZoom());
-    const spacing = Math.max(20, Math.min(900, metersPerPixel * 30));
+    const spacing = Math.max(28, Math.min(1100, metersPerPixel * 46));
     const tangentOffset = Math.max(5, Math.min(18, spacing * .2));
     const visibleBounds = map.getBounds().pad(.3);
     const candidates = [];
@@ -207,8 +208,8 @@
         const icon = L.divIcon({
           className: "route-inline-chevron-icon",
           html: `<span class="route-inline-chevron" style="transform:rotate(${candidate.bearing - 90}deg)"></span>`,
-          iconSize: [10, 10],
-          iconAnchor: [5, 5],
+          iconSize: [12, 12],
+          iconAnchor: [6, 6],
         });
         L.marker(candidate.point, { icon, interactive: false, keyboard: false, zIndexOffset: -1000 }).addTo(routeChevronLayer);
       });
@@ -216,9 +217,12 @@
   }
   function refreshMileMarkers() {
     mileMarkerLayer.clearLayers();
+    const overview = map.getZoom() <= 13;
     route.mileMarkers.forEach(m => {
       const along = Math.min(totalMeters, m.mile * 1609.344);
-      L.marker(displayedRoutePoint(along), { icon: label(String(m.mile), "course-label") }).addTo(mileMarkerLayer).bindTooltip(`Mile ${m.mile}`);
+      const tilt = ((m.mile % 3) - 1) * 1.6;
+      const shift = overview ? (m.mile % 2 ? -8 : 8) : 0;
+      L.marker(displayedRoutePoint(along), { icon: label(String(m.mile), `course-label${overview ? " course-label-overview" : ""}`, tilt, shift) }).addTo(mileMarkerLayer).bindTooltip(`Mile ${m.mile}`);
     });
   }
   function refreshRoutePresentation() {
@@ -229,8 +233,8 @@
   map.on("zoomend moveend", refreshRoutePresentation);
   refreshRoutePresentation();
 
-  L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
-  L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
+  L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish", -1.2), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
+  L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish", 1.2), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
   const headingPane = document.createElement("div");
   headingPane.className = "leaflet-heading-pane";
   const mapPane = map.getPane("mapPane");
@@ -466,7 +470,7 @@
   mapElement.addEventListener("pointerup", endMapPointer, { passive: true, capture: true });
   mapElement.addEventListener("pointercancel", endMapPointer, { passive: true, capture: true });
   const mapOrientationLabel = () => locationDirectionMode && following ? headingSource || "HEADING" : manualMapRotation !== null ? "MANUAL" : "NORTH UP";
-  const userDirectionIcon = L.divIcon({ className: "user-dot", html: '<span class="user-direction-arrow"></span><span class="user-center"></span>', iconSize: [34, 34], iconAnchor: [17, 17] });
+  const userDirectionIcon = L.divIcon({ className: "user-dot", html: '<span class="user-direction-arrow"></span><span class="user-shadow"></span><span class="user-center"></span>', iconSize: [40, 40], iconAnchor: [20, 20] });
   function refreshUserDirection() {
     const element = userMarker?.getElement();
     if (!element) return;

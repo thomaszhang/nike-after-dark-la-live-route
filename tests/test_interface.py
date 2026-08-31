@@ -10,9 +10,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=45')
-    assert 'styles.css?v=26' in HTML
-    for asset in ('styles.css?v=26', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=45'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=46')
+    assert 'styles.css?v=27' in HTML
+    for asset in ('styles.css?v=27', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=46'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -149,21 +149,40 @@ def test_live_location_marker_shows_heading_whenever_known():
     assert re.search(r"\.user-dot:not\(\.has-heading\) \.user-direction-arrow\s*\{[^}]*display:none", CSS, re.DOTALL)
 
 
-def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
-    assert 'color: "#e90000"' in JS
-    assert re.search(r'color: "#e90000"[^\n]*opacity: \.78', JS)
+def test_course_uses_layered_race_ink_and_spaced_direction_stitches():
+    assert 'color: "#e3261f"' in JS
+    assert 'className: "course-shadow-line"' in JS
+    assert 'className: "course-paper-line"' in JS
+    assert re.search(r'color: "#e3261f"[^\n]*opacity: \.96[^\n]*className: "course-ink-line"', JS)
     assert "route-inline-chevron" in JS
-    assert "metersPerPixel * 30" in JS
-    assert "iconAnchor: [5, 5]" in JS
+    assert "metersPerPixel * 46" in JS
+    assert "iconAnchor: [6, 6]" in JS
     assert "candidate.bearing - 90" in JS
     assert "accepted.screen.distanceTo(candidate.screen) < 20" in JS
     assert "!oppositeBearing(accepted.bearing, candidate.bearing)" in JS
     assert "zIndexOffset: -1000" in JS
     assert "oppositeBearing" in JS
     assert "bearingBetween(previous, next)" in JS
-    assert re.search(r"\.route-inline-chevron\s*\{[^}]*background:rgba\(255,255,255,\.96\)[^}]*clip-path:polygon", CSS, re.DOTALL)
+    assert re.search(r"\.route-inline-chevron::before\s*\{[^}]*content:\"›\"", CSS, re.DOTALL)
     assert "routeArrowMarkers" not in JS
     assert "route-direction-arrow" not in CSS
+
+
+def test_overview_mile_pins_are_compact_without_moving_course_geometry():
+    marker_refresh = JS[JS.index("function refreshMileMarkers"):JS.index("function refreshRoutePresentation")]
+    assert "map.getZoom() <= 13" in marker_refresh
+    assert "m.mile % 2 ? -8 : 8" in marker_refresh
+    assert "displayedRoutePoint(along)" in marker_refresh
+    assert "course-label-overview" in CSS
+    assert re.search(r"\.course-label-overview \.map-label-inner\s*\{[^}]*width:22px[^}]*height:22px", CSS, re.DOTALL)
+
+
+def test_handcrafted_material_stays_contained_and_reduced_motion_is_respected():
+    assert "--grain:" in CSS
+    assert re.search(r"\.stats-card,.navigation-card,.actions-card,.help-card,.error-card\s*\{[^}]*background-image:var\(--grain\)", CSS, re.DOTALL)
+    assert re.search(r"#app::after\s*\{[^}]*pointer-events:none", CSS, re.DOTALL)
+    assert re.search(r"@media \(prefers-reduced-motion:reduce\)\s*\{[^}]*\.user-shadow\s*\{[^}]*animation:none", CSS, re.DOTALL)
+    assert ".leaflet-tile-pane { filter:sepia(.08)" in CSS
 
 
 def test_switching_primary_view_preserves_direction_and_two_pointer_rotation_is_supported():

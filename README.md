@@ -87,6 +87,12 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 
 ## Course data
 
+### Visual treatment
+
+The map is intentionally presented like a compact race-day field guide rather than a perfectly uniform dashboard. Cards use warm paper or charcoal, subtle contained grain, slightly varied edges, and clear system typography. The course is drawn as layered red race ink over a warm under-stroke, with spaced white direction stitches, field-marker mile badges, and a dimensional blue location compass.
+
+All visual variation is deterministic. It does not move or simplify Nike's official coordinates, and it does not change course matching, mileage, elevation, or turn calculations. Overview mile badges may shift a few screen pixels around their exact map anchor to remain readable where the course doubles back; street-level markers and the underlying route stay attached to the same official geometry.
+
 `route-data.js` contains the official source polyline and mile-marker metadata from:
 
 <https://www.afterdarktour.nike.com/en/la>
