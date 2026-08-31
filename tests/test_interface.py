@@ -10,9 +10,9 @@ SW = (ROOT / "sw.js").read_text(encoding="utf-8")
 
 def test_heading_smoother_loads_before_app_and_is_cached():
     assert '<meta name="mobile-web-app-capable" content="yes">' in HTML
-    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=40')
-    assert 'styles.css?v=25' in HTML
-    for asset in ('styles.css?v=25', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=40'):
+    assert HTML.index('heading-smoothing.js?v=1') < HTML.index('app.js?v=45')
+    assert 'styles.css?v=26' in HTML
+    for asset in ('styles.css?v=26', 'leaflet.css?v=1.9.4', 'leaflet.js?v=1.9.4', 'route-data.js?v=2', 'course-elevation.js?v=1', 'heading-smoothing.js?v=1', 'app.js?v=45'):
         assert f'"{asset}"' in SW
     assert re.search(r'\b\w+\.request\.mode\s*===\s*"navigate"', SW)
     assert '"heading-smoothing.js"' not in SW
@@ -41,11 +41,18 @@ def test_tracking_starts_automatically_without_manual_button():
     assert re.search(r"\bstartTracking\(\);\s*(?:\n|if \(\"serviceWorker)", JS)
 
 
-def test_heading_starts_enabled_and_remains_a_toggle():
-    assert 'id="direction-toggle"' in HTML
-    assert re.search(r'id="direction-toggle"[^>]*aria-pressed="true"', HTML)
-    assert re.search(r"let navigationMode = true\b", JS)
+def test_heading_starts_enabled_and_is_integrated_into_both_primary_controls():
+    assert 'id="direction-toggle"' not in HTML
+    assert HTML.count('direction-substate') == 2
+    assert HTML.count('class="direction-state"') == 2
+    assert re.search(r"let locationDirectionMode = true\b", JS)
+    assert re.search(r"let routeDirectionMode = false\b", JS)
     assert "toggleNavigation" in JS
+    assert "function updateControlAccessibility()" in JS
+    assert "Press again to turn Route Direction" in JS
+    assert "Press again to turn Location Direction" in JS
+    assert 'Accuracy ±${Math.round(feet(liveSummary.accuracy))} feet' in JS
+    assert 'setAttribute("aria-label", `Center map on my location. Accuracy' not in JS
 
 
 def test_navigation_is_one_bottom_interface():
@@ -78,17 +85,18 @@ def test_course_information_uses_requested_title_and_four_columns():
     assert "progress follows nearest point on course" not in JS
 
 
-def test_bottom_bar_has_route_location_and_direction_with_enabled_dots():
+def test_bottom_bar_has_two_primary_controls_with_direction_substates():
     assert 'class="actions-card" aria-label="Map controls"' in HTML
-    assert HTML.count('class="control-button') == 3
-    assert re.search(r'id="route-control"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Route', HTML)
-    assert re.search(r'id="center-control"[^>]*aria-pressed="true"[^>]*>[\s\S]*<span class="control-label">Location</span>[\s\S]*id="location-accuracy"', HTML)
+    assert HTML.count('class="control-button') == 2
+    assert re.search(r'id="route-control"[^>]*>[\s\S]*<span class="control-label">Route</span>[\s\S]*class="direction-substate"', HTML)
+    assert re.search(r'id="center-control"[^>]*aria-pressed="true"[^>]*>[\s\S]*<span class="control-label">Location[\s\S]*id="location-accuracy"', HTML)
     assert re.search(r"\.control-detail\s*\{[^}]*color:var\(--muted\)[^}]*font-size:", CSS, re.DOTALL)
-    assert re.search(r'id="direction-toggle"[^>]*aria-pressed="true"[^>]*>\s*<span class="enabled-dot"[^>]*></span>\s*Direction', HTML)
+    assert 'id="direction-toggle"' not in HTML
     assert 'id="recenter"' not in HTML
     assert "recenter-button" not in CSS
-    assert "grid-template-columns:repeat(3,1fr)" in CSS
+    assert "grid-template-columns:repeat(2,1fr)" in CSS
     assert re.search(r"\.control-button\.active\s+\.enabled-dot\s*\{[^}]*background:var\(--enabled\)", CSS, re.DOTALL)
+    assert re.search(r"\.direction-substate\.active\s+\.direction-dot\s*\{[^}]*background:var\(--enabled\)", CSS, re.DOTALL)
     assert 'id="navigate"' not in HTML
     assert 'id="overview"' not in HTML
     assert "Heading on" not in HTML
@@ -114,12 +122,20 @@ def test_rotated_map_requests_tiles_for_the_full_viewport_diagonal():
     assert "keepBuffer: 4" in JS
 
 
-def test_location_does_not_change_heading_preference():
-    handler = re.search(r'els\["center-control"\]\.addEventListener\("click",\s*(\w+)\)', JS)
-    assert handler
-    function_start = JS.index(f"function {handler.group(1)}()")
-    function_end = JS.index("\n  }", function_start)
-    assert "toggleNavigation" not in JS[function_start:function_end]
+def test_primary_controls_select_once_then_toggle_their_direction_preference():
+    location_handler = JS[JS.index("async function activateLocationControl"):JS.index("function showFullRoute")]
+    route_handler = JS[JS.index("async function activateRouteControl"):JS.index('map.on("dragstart"')]
+    assert "if (following && !fullRouteMode)" in location_handler
+    assert 'await toggleNavigation("location")' in location_handler
+    assert "centerLiveMap()" in location_handler
+    assert "if (fullRouteMode)" in route_handler
+    assert 'await toggleNavigation("route")' in route_handler
+    assert "showFullRoute()" in route_handler
+    assert "disableDirection" not in route_handler
+    toggle = JS[JS.index("async function toggleNavigation"):JS.index("function centerLiveMap")]
+    assert "setFullRouteMode(false)" not in toggle
+    assert "following = true" not in toggle
+    assert "routeDirectionMode" in toggle and "locationDirectionMode" in toggle
 
 
 def test_live_location_marker_shows_heading_whenever_known():
@@ -150,30 +166,32 @@ def test_course_uses_stronger_nike_red_and_continuous_inline_chevrons():
     assert "route-direction-arrow" not in CSS
 
 
-def test_explicit_location_to_route_selection_disables_direction_and_two_pointer_rotation_is_supported():
-    route_handler = JS[JS.index('els["route-control"].addEventListener'):]
-    route_handler = route_handler[:route_handler.index("\n  });")]
-    assert "selectingRouteFromLocation" in route_handler
-    assert "following && !fullRouteMode" in route_handler
-    assert "showFullRoute({ disableDirection: selectingRouteFromLocation })" in route_handler
+def test_switching_primary_view_preserves_direction_and_two_pointer_rotation_is_supported():
+    assert "selectingRouteFromLocation" not in JS
+    assert "disableDirection" not in JS
     assert "manualMapRotation" in JS
     assert "activeMapPointers" in JS
     assert "pointerdown" in JS and "pointermove" in JS and "pointerup" in JS and "pointercancel" in JS
     assert "pointerAngle" in JS
-    assert "applyNavigationMode(false, { preserveRotation: true })" in JS[JS.index("function beginManualRotation"):JS.index("function updateManualRotation")]
+    manual_rotation = JS[JS.index("function beginManualRotation"):JS.index("function updateManualRotation")]
+    assert "previewDistance !== null || fullRouteMode" in manual_rotation
+    assert "routeDirectionMode = false" in manual_rotation
+    assert "else if (following)" in manual_rotation
+    assert "locationDirectionMode = false" in manual_rotation
+    assert "updateDirectionSubstates()" in manual_rotation
     assert "headingPane.style.rotate" in JS
 
 
 def test_off_course_transition_defaults_to_route_and_route_press_always_fits_course():
     position = JS[JS.index("function updatePosition"):JS.index("function locationError")]
-    route_view = JS[JS.index("function showFullRoute"):JS.index('els["route-control"].addEventListener')]
+    route_view = JS[JS.index("function showFullRoute"):JS.index("async function activateRouteControl")]
     assert 'const enteredOffCourse = courseStatus === "Off course" && liveSummary?.status !== "Off course"' in position
     assert 'if (previewDistance !== null) pendingOffCourseRoute = courseStatus === "Off course"' in position
-    assert "else if (enteredOffCourse) showFullRoute({ disableDirection: true })" in position
+    assert "else if (enteredOffCourse) showFullRoute()" in position
     assert "setMapRotationImmediately(0)" in route_view
     assert "map.invalidateSize({ pan: false, animate: false })" in route_view
     assert "map.fitBounds(routeBounds" in route_view
-    assert "showFullRoute({ disableDirection: selectingRouteFromLocation })" in JS
+    assert "showFullRoute()" in JS
 
 
 def test_off_course_route_selection_waits_for_active_profile_preview_to_end():
@@ -181,7 +199,7 @@ def test_off_course_route_selection_waits_for_active_profile_preview_to_end():
     assert "pendingOffCourseRoute" in JS
     assert "const showPendingOffCourseRoute = pendingOffCourseRoute" in end_preview
     assert "pendingOffCourseRoute = false" in end_preview
-    assert "if (showPendingOffCourseRoute) showFullRoute({ disableDirection: true })" in end_preview
+    assert "if (showPendingOffCourseRoute) showFullRoute()" in end_preview
 
 
 def test_off_course_hides_course_values_but_keeps_preview_values():
@@ -239,6 +257,7 @@ def test_profile_preview_follows_course_when_direction_is_on_and_waits_for_tiles
     assert "rotateMap()" in preview
     assert preview.index("map.setView(displayedPoint") < preview.index("rotateMap()")
     assert "setMapRotationImmediately" not in preview
+    assert "routeDirectionMode" in JS[JS.index("function rotateMap"):JS.index("const pointerAngle")]
     assert 'streetTiles.once("load"' in preview
     assert "map.invalidateSize" in preview
 
@@ -272,6 +291,16 @@ def test_bidirectional_route_passes_are_separated_with_both_arrow_directions():
     assert "cluster.forEach(candidate" in JS
     assert "alternatives.length && cell % 2" not in JS
     assert "zIndexOffset" in JS
+
+
+def test_mile_markers_follow_the_displayed_directional_route_pass():
+    assert "mileMarkerLayer" in JS
+    marker_refresh = JS[JS.index("function refreshMileMarkers"):JS.index("function refreshRoutePresentation")]
+    assert "mileMarkerLayer.clearLayers()" in marker_refresh
+    assert "m.mile * 1609.344" in marker_refresh
+    assert "displayedRoutePoint(along)" in marker_refresh
+    assert "m.coordinates" not in marker_refresh
+    assert "refreshMileMarkers()" in JS[JS.index("function refreshRoutePresentation"):JS.index('map.on("zoomend moveend"')]
 
 
 def test_map_and_interface_follow_system_appearance():

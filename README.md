@@ -30,7 +30,7 @@ The bottom navigation card changes with distance from the route:
 | More than 30 m through 100 m | Direction and distance back to the nearest course point |
 | More than 100 m (about 328 ft) | Navigation card hidden; top status reports off course while Distance, Remaining, and Elevation show `—` |
 
-The card returns automatically after the location is again within 100 m of the course. Route, Location, and Direction remain available while the card is hidden.
+The card returns automatically after the location is again within 100 m of the course. Route and Location, including each view's Direction setting, remain available while the card is hidden.
 
 These cues are a convenience, not authoritative race-day directions. Follow event staff, signs, closures, and official course updates.
 
@@ -59,17 +59,18 @@ python3 -m http.server 8765 --bind 127.0.0.1
 
 1. Open the HTTPS deployment in Safari.
 2. Allow precise location when prompted.
-3. Tap **Direction** if Safari asks separately for motion/orientation access.
+3. Press the selected **Location** button again if you need to enable Direction and Safari asks separately for motion/orientation access.
 4. Optionally choose **Share → Add to Home Screen**.
 5. Keep the page visible during the run. iOS may pause browser location updates after the screen locks, even though the app requests a screen wake lock where supported.
 
 Controls:
 
-- **Route** fits and centers the complete course and turns Direction off.
-- **Location** returns the map to the current location after Route or manual dragging; its second line shows current GPS accuracy.
-- **Direction** switches heading-up rotation on or off and starts enabled. Turning it on exits Route view and resumes location following.
-- Rotate the map manually with two fingers. Manual rotation turns Direction off and preserves the chosen bearing.
-- Green dots show which controls are active.
+- **Route** fits and centers the complete course. Press selected Route again to toggle its remembered Direction setting; that setting rotates the map to the course bearing only while scrubbing the elevation profile.
+- **Location** returns the map to the current location after Route or manual dragging. Press selected Location again to toggle its remembered heading-up Direction setting; GPS accuracy remains beside the label.
+- Route and Location are mutually exclusive. Dragging the map leaves both unselected without changing either Direction setting.
+- Location Direction starts on; Route Direction starts off. Switching views preserves both settings.
+- Rotate the map manually with two fingers. Manual rotation turns Direction off for the current view and preserves the chosen bearing.
+- Green dots show the selected view and each view's Direction state.
 - **More info** opens the in-app usage notes and official race link.
 
 ## Privacy and network use
@@ -86,7 +87,7 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 
 ## Course data
 
-`route-data.js` contains the official source polyline and mile markers from:
+`route-data.js` contains the official source polyline and mile-marker metadata from:
 
 <https://www.afterdarktour.nike.com/en/la>
 
@@ -94,7 +95,7 @@ OpenStreetMap tiles are hosted separately. Previously viewed tiles may remain in
 
 <https://open-meteo.com/en/docs/elevation-api>
 
-The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and fixed-size round dot show trusted live progress on the graph. While sliding, Route is selected temporarily, Location is deselected, and the map keeps the marker centered on the same right-of-travel pass used by the visible route. With Direction enabled, the map rotates smoothly around that fixed marker so the selected course bearing points toward the top of the screen; with Direction disabled, the preview remains north-up. Releasing restores the newest live values plus the previous controls, map view, and rotation.
+The sampled profile is stored locally. The live app does not send coordinates to an elevation service. A red line and fixed-size round dot show trusted live progress on the graph. While sliding, Route is selected temporarily, Location is deselected, and the map keeps the marker centered on the same right-of-travel pass used by the visible route. With Route Direction enabled, the map rotates smoothly around that fixed marker so the selected course bearing points toward the top of the screen; with Route Direction disabled, the preview remains north-up. Releasing restores the newest live values plus the previous controls, map view, and rotation. Mile labels are placed by exact course distance on that same displayed directional pass instead of using the original unshifted GPX marker coordinates.
 
 The official page advertises 13.1 miles. Its current source polyline measures approximately 13.32 miles. Race-day closures and course revisions can differ, so re-check Nike's official page before the event.
 

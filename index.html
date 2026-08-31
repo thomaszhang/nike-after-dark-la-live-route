@@ -15,7 +15,7 @@
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=25">
+  <link rel="stylesheet" href="styles.css?v=26">
 </head>
 <body>
   <main id="app">
@@ -53,14 +53,18 @@
 
     <section class="actions-card" aria-label="Map controls">
       <button id="route-control" class="control-button" type="button" aria-pressed="false" aria-label="Center map on route">
-        <span class="enabled-dot" aria-hidden="true"></span>Route
+        <span class="enabled-dot" aria-hidden="true"></span>
+        <span class="control-copy">
+          <span class="control-label">Route</span>
+          <span id="route-direction" class="direction-substate"><span class="direction-dot" aria-hidden="true"></span><span class="direction-state">Direction off</span></span>
+        </span>
       </button>
       <button id="center-control" class="control-button active" type="button" aria-pressed="true" aria-label="Center map on my location">
         <span class="enabled-dot" aria-hidden="true"></span>
-        <span class="control-copy"><span class="control-label">Location</span><small id="location-accuracy" class="control-detail">—</small></span>
-      </button>
-      <button id="direction-toggle" class="control-button active" type="button" aria-pressed="true" aria-label="Direction heading enabled">
-        <span class="enabled-dot" aria-hidden="true"></span>Direction
+        <span class="control-copy">
+          <span class="control-label">Location <small id="location-accuracy" class="control-detail">—</small></span>
+          <span id="location-direction" class="direction-substate active"><span class="direction-dot" aria-hidden="true"></span><span class="direction-state">Direction on</span></span>
+        </span>
       </button>
     </section>
 
@@ -72,9 +76,9 @@
           <li>Keep this page open while running. Add it to your Home Screen for one-tap access.</li>
           <li>The blue dot is you. Distance, remaining distance, elevation, and status stay at the top.</li>
           <li>The bottom navigation card combines your next course turn and live heading direction.</li>
-          <li><b>Route</b> always fits the course and is selected automatically when you go off course. <b>Location</b> returns to your position and shows GPS accuracy, and <b>Direction</b> toggles heading-up rotation.</li>
+          <li>Tap <b>Route</b> or <b>Location</b> once to select that view. Tap the selected view again to toggle its Direction sub-button. Dragging the map leaves both views unselected.</li>
           <li>Rotate the map manually with two fingers. Manual rotation turns Direction off.</li>
-          <li>Slide across the elevation profile to preview Route. Direction follows the selected course bearing when enabled; release restores your previous view.</li>
+          <li>Route Direction applies while sliding across the elevation profile. Location Direction rotates the live map to your heading. Releasing the profile restores your previous view.</li>
         </ol>
         <p>iPhone may pause browser location after the screen locks. This page requests that the screen stay awake when supported.</p>
         <p>Elevation: Copernicus DEM GLO-90 via <a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo ↗</a>.</p>
@@ -89,6 +93,6 @@
   <script src="route-data.js?v=2"></script>
   <script src="course-elevation.js?v=1"></script>
   <script src="heading-smoothing.js?v=1"></script>
-  <script src="app.js?v=40"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

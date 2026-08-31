@@ -143,8 +143,10 @@
   let currentFix = null;
   const routeBounds = L.latLngBounds(routeLatLngs);
   const routePassOffsetPixels = 5;
+  const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
   const routePassLayer = L.layerGroup().addTo(map);
   const routeChevronLayer = L.layerGroup().addTo(map);
+  const mileMarkerLayer = L.layerGroup().addTo(map);
   const oppositeBearing = (first, second) => Math.abs(signedHeading(first - second)) > 120;
   map.fitBounds(routeBounds, { paddingTopLeft: [20, 170], paddingBottomRight: [20, 150] });
 
@@ -212,17 +214,23 @@
       });
     });
   }
+  function refreshMileMarkers() {
+    mileMarkerLayer.clearLayers();
+    route.mileMarkers.forEach(m => {
+      const along = Math.min(totalMeters, m.mile * 1609.344);
+      L.marker(displayedRoutePoint(along), { icon: label(String(m.mile), "course-label") }).addTo(mileMarkerLayer).bindTooltip(`Mile ${m.mile}`);
+    });
+  }
   function refreshRoutePresentation() {
     refreshRoutePasses();
     refreshRouteChevrons();
+    refreshMileMarkers();
   }
   map.on("zoomend moveend", refreshRoutePresentation);
   refreshRoutePresentation();
 
-  const label = (text, className) => L.divIcon({ className, html: `<span class="map-label-inner">${text}</span>`, iconAnchor: [className === "course-label" ? 13 : 24, 13] });
   L.marker([route.start[1], route.start[0]], { icon: label("START", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Start · King Harbor");
   L.marker([route.finish[1], route.finish[0]], { icon: label("FINISH", "start-finish"), zIndexOffset: 500 }).addTo(map).bindPopup("Finish · King Harbor");
-  route.mileMarkers.forEach(m => L.marker([m.coordinates[1], m.coordinates[0]], { icon: label(String(m.mile), "course-label") }).addTo(map).bindTooltip(`Mile ${m.mile}`));
   const headingPane = document.createElement("div");
   headingPane.className = "leaflet-heading-pane";
   const mapPane = map.getPane("mapPane");
@@ -240,7 +248,7 @@
   syncMapRotationOrigin();
 
   const elementIds = [
-    "route-control", "center-control", "direction-toggle", "course-status", "distance", "remaining", "live-elevation", "location-accuracy",
+    "route-control", "center-control", "route-direction", "location-direction", "course-status", "distance", "remaining", "live-elevation", "location-accuracy",
     "direction", "turn-arrow", "direction-label", "direction-detail", "heading-source", "location-error", "help",
     "help-toggle", "help-body", "elevation-profile", "elevation-chart", "elevation-area", "elevation-line",
     "elevation-cursor", "elevation-progress",
@@ -252,7 +260,8 @@
   let nearestMarker = null;
   let following = true;
   let wakeLock = null;
-  let navigationMode = true;
+  let locationDirectionMode = true;
+  let routeDirectionMode = false;
   let manualMapRotation = null;
   let fullRouteMode = false;
   let orientationListening = false;
@@ -293,7 +302,7 @@
     statusClass(els["course-status"], liveSummary.statusClass);
     const accuracyText = `±${Math.round(feet(liveSummary.accuracy))} feet`;
     els["location-accuracy"].textContent = accuracyText;
-    els["center-control"].setAttribute("aria-label", `Center map on my location. Accuracy ${accuracyText}`);
+    updateControlAccessibility();
     const liveMile = Number(miles(liveSummary.progress).toFixed(1));
     els["elevation-profile"].setAttribute("aria-valuenow", String(liveMile));
     els["elevation-profile"].setAttribute("aria-valuetext", `Live position · mile ${liveMile}`);
@@ -401,8 +410,8 @@
   }
   function rotateMap() {
     const targetRotation = previewDistance !== null
-      ? navigationMode ? -courseBearing(previewDistance) : 0
-      : navigationMode && !fullRouteMode && Number.isFinite(deviceHeading)
+      ? routeDirectionMode ? -courseBearing(previewDistance) : 0
+      : locationDirectionMode && following && !fullRouteMode && Number.isFinite(deviceHeading)
       ? -deviceHeading
       : manualMapRotation ?? 0;
     mapAngleSmoother.setTarget(targetRotation);
@@ -426,7 +435,9 @@
   function beginManualRotation() {
     if (activeMapPointers.size !== 2) return;
     manualMapRotation = mapRotation;
-    applyNavigationMode(false, { preserveRotation: true });
+    if (previewDistance !== null || fullRouteMode) routeDirectionMode = false;
+    else if (following) locationDirectionMode = false;
+    updateDirectionSubstates();
     setMapRotationImmediately(manualMapRotation);
     rotationGesture = { startAngle: pointerAngle(activeMapPointers), startRotation: manualMapRotation };
     renderNavigation();
@@ -454,7 +465,7 @@
   };
   mapElement.addEventListener("pointerup", endMapPointer, { passive: true, capture: true });
   mapElement.addEventListener("pointercancel", endMapPointer, { passive: true, capture: true });
-  const mapOrientationLabel = () => navigationMode ? headingSource || "HEADING" : manualMapRotation !== null ? "MANUAL" : "NORTH UP";
+  const mapOrientationLabel = () => locationDirectionMode && following ? headingSource || "HEADING" : manualMapRotation !== null ? "MANUAL" : "NORTH UP";
   const userDirectionIcon = L.divIcon({ className: "user-dot", html: '<span class="user-direction-arrow"></span><span class="user-center"></span>', iconSize: [34, 34], iconAnchor: [17, 17] });
   function refreshUserDirection() {
     const element = userMarker?.getElement();
@@ -561,10 +572,10 @@
     }
     refreshUserDirection();
     if (previewDistance !== null) pendingOffCourseRoute = courseStatus === "Off course";
-    else if (enteredOffCourse) showFullRoute({ disableDirection: true });
+    else if (enteredOffCourse) showFullRoute();
     if (following && previewDistance === null) {
-      const targetZoom = Math.max(map.getZoom(), navigationMode ? 17 : 16);
-      const viewCenter = navigationMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
+      const targetZoom = Math.max(map.getZoom(), locationDirectionMode ? 17 : 16);
+      const viewCenter = locationDirectionMode && Number.isFinite(deviceHeading) ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       const centerLatLng = [viewCenter.lat, viewCenter.lon];
       const center = map.getCenter();
       if (map.getZoom() !== targetZoom || center.distanceTo(centerLatLng) > 8) {
@@ -682,7 +693,7 @@
       setFullRouteMode(previewSavedControls.fullRouteMode);
     }
     if (following && currentFix && !fullRouteMode) {
-      const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
+      const useHeadingOffset = locationDirectionMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], previewSavedView?.zoom ?? map.getZoom(), { animate: false });
       syncMapRotationOrigin();
@@ -697,7 +708,7 @@
     previewMapRotation = null;
     previewSavedControls = null;
     renderLiveSummary();
-    if (showPendingOffCourseRoute) showFullRoute({ disableDirection: true });
+    if (showPendingOffCourseRoute) showFullRoute();
   }
 
   function previewFromPointer(event) {
@@ -726,12 +737,22 @@
   });
   els["elevation-profile"].addEventListener("blur", endCoursePreview);
   renderElevationProfile();
+  function updateControlAccessibility() {
+    const routeSelected = els["route-control"].getAttribute("aria-pressed") === "true";
+    const locationSelected = els["center-control"].getAttribute("aria-pressed") === "true";
+    const routeAction = routeSelected ? `Press again to turn Route Direction ${routeDirectionMode ? "off" : "on"}` : "Press to center map on route";
+    const locationAction = locationSelected ? `Press again to turn Location Direction ${locationDirectionMode ? "off" : "on"}` : "Press to center map on my location";
+    const accuracy = liveSummary ? ` Accuracy ±${Math.round(feet(liveSummary.accuracy))} feet.` : "";
+    els["route-control"].setAttribute("aria-label", `Route ${routeSelected ? "selected" : "not selected"}. Direction ${routeDirectionMode ? "on" : "off"}. ${routeAction}`);
+    els["center-control"].setAttribute("aria-label", `Location ${locationSelected ? "selected" : "not selected"}. Direction ${locationDirectionMode ? "on" : "off"}.${accuracy} ${locationAction}`);
+  }
   function setFullRouteMode(enabled) {
     fullRouteMode = enabled;
     els["route-control"].classList.toggle("active", enabled);
     els["route-control"].setAttribute("aria-pressed", String(enabled));
     els["center-control"].classList.toggle("active", !enabled && following);
     els["center-control"].setAttribute("aria-pressed", String(!enabled && following));
+    updateControlAccessibility();
   }
   function setPreviewRouteSelection(enabled) {
     const routeSelected = enabled || fullRouteMode;
@@ -740,16 +761,22 @@
     els["route-control"].setAttribute("aria-pressed", String(routeSelected));
     els["center-control"].classList.toggle("active", locationSelected);
     els["center-control"].setAttribute("aria-pressed", String(locationSelected));
+    updateControlAccessibility();
   }
-  function applyNavigationMode(enabled, { preserveRotation = false } = {}) {
-    navigationMode = enabled;
+  function updateDirectionSubstates() {
+    [["route-direction", routeDirectionMode], ["location-direction", locationDirectionMode]].forEach(([id, enabled]) => {
+      els[id].classList.toggle("active", enabled);
+      els[id].querySelector(".direction-state").textContent = enabled ? "Direction on" : "Direction off";
+    });
+    updateControlAccessibility();
+  }
+  function applyNavigationMode(target, enabled, { preserveRotation = false } = {}) {
+    if (target === "route") routeDirectionMode = enabled;
+    else locationDirectionMode = enabled;
     if (enabled) manualMapRotation = null;
-    els["direction-toggle"].classList.toggle("active", enabled);
-    els["direction-toggle"].setAttribute("aria-pressed", String(enabled));
-    els["direction-toggle"].setAttribute("aria-label", enabled ? "Direction heading enabled" : "Direction heading disabled");
-    document.body.classList.toggle("navigation-mode", enabled);
+    updateDirectionSubstates();
     map.invalidateSize({ pan: false, animate: false });
-    if (!preserveRotation && currentFix && following && !fullRouteMode) {
+    if (target === "location" && !preserveRotation && currentFix && following && !fullRouteMode) {
       const useHeadingOffset = enabled && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
       map.setView([viewCenter.lat, viewCenter.lon], enabled ? 17 : 16, { animate: false });
@@ -757,9 +784,14 @@
     }
     if (!preserveRotation) renderNavigation();
   }
-  async function toggleNavigation() {
-    if (navigationMode) {
-      applyNavigationMode(false);
+  async function toggleNavigation(target) {
+    const enabled = target === "route" ? routeDirectionMode : locationDirectionMode;
+    if (enabled) {
+      applyNavigationMode(target, false);
+      return;
+    }
+    if (target === "route") {
+      applyNavigationMode("route", true);
       return;
     }
     let permission = "granted";
@@ -774,31 +806,31 @@
       window.addEventListener("deviceorientation", onOrientation, { passive: true });
       orientationListening = true;
     }
-    following = true;
-    setFullRouteMode(false);
-    applyNavigationMode(true);
+    applyNavigationMode("location", true);
     if (permission !== "granted") {
       els["direction-label"].textContent = "Move to set direction";
       els["direction-detail"].textContent = "Compass denied · using GPS heading while running";
       els["heading-source"].textContent = "GPS";
     }
   }
-  els["direction-toggle"].addEventListener("click", toggleNavigation);
   function centerLiveMap() {
     following = true;
     setFullRouteMode(false);
     if (currentFix) {
-      const useHeadingOffset = navigationMode && Number.isFinite(deviceHeading);
+      const useHeadingOffset = locationDirectionMode && Number.isFinite(deviceHeading);
       const viewCenter = useHeadingOffset ? pointFromHeading(currentFix, deviceHeading, 70) : currentFix;
-      map.setView([viewCenter.lat, viewCenter.lon], navigationMode ? 17 : 16, { animate: false });
+      map.setView([viewCenter.lat, viewCenter.lon], locationDirectionMode ? 17 : 16, { animate: false });
       syncMapRotationOrigin();
     }
     renderNavigation();
   }
-  els["center-control"].addEventListener("click", centerLiveMap);
-  function showFullRoute({ disableDirection = false } = {}) {
+  async function activateLocationControl() {
+    if (following && !fullRouteMode) await toggleNavigation("location");
+    else centerLiveMap();
+  }
+  els["center-control"].addEventListener("click", activateLocationControl);
+  function showFullRoute() {
     manualMapRotation = null;
-    if (disableDirection) applyNavigationMode(false, { preserveRotation: true });
     setFullRouteMode(true);
     following = false;
     setMapRotationImmediately(0);
@@ -807,10 +839,11 @@
     syncMapRotationOrigin();
     renderNavigation();
   }
-  els["route-control"].addEventListener("click", () => {
-    const selectingRouteFromLocation = following && !fullRouteMode;
-    showFullRoute({ disableDirection: selectingRouteFromLocation });
-  });
+  async function activateRouteControl() {
+    if (fullRouteMode) await toggleNavigation("route");
+    else showFullRoute();
+  }
+  els["route-control"].addEventListener("click", activateRouteControl);
   map.on("dragstart", () => {
     following = false;
     setFullRouteMode(false);
@@ -835,7 +868,7 @@
   window.visualViewport?.addEventListener("scroll", refreshMapLayout, { passive: true });
   setTimeout(refreshMapLayout, 100);
   setTimeout(refreshMapLayout, 1000);
-  document.body.classList.add("navigation-mode");
+  updateDirectionSubstates();
   if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission !== "function") {
     window.addEventListener("deviceorientation", onOrientation, { passive: true });
     orientationListening = true;
@@ -845,10 +878,10 @@
   function setTestNavigation(heading, enabled = true) {
     deviceHeading = normalizeHeading(heading);
     headingSource = "TEST";
-    applyNavigationMode(enabled);
+    applyNavigationMode("location", enabled);
     renderNavigation();
   }
-  function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode, fullRouteMode, following, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
+  function navigationState() { return { deviceHeading, mapRotation, mapRotationTarget: mapAngleSmoother.getTarget(), mapRotationSettled: mapAngleSmoother.isSettled(), headingSource, currentSpeed, navigationMode: locationDirectionMode, locationDirectionMode, routeDirectionMode, fullRouteMode, following, gpsHistory: gpsHistory.length, guidancePaused: Boolean(currentNearest && currentNearest.distance > MAX_REJOIN_GUIDANCE_METERS) }; }
   function mapState(courseDistance = null) {
     const center = map.getCenter();
     const size = map.getSize();
